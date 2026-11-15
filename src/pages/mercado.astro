@@ -1,0 +1,135 @@
+---
+import Base from '../layouts/Base.astro';
+import { MERCADO, MAPA_RISCO, RISCOS } from '../data/mercado';
+---
+<Base titulo="Mercado" atual="mercado">
+  <span class="rotulo" id="k-data">Panorama</span>
+  <h1>O mercado agora</h1>
+  <p class="sub">Os números que alimentam as lições e os simuladores. O conteúdo foi validado na data indicada; o botão abaixo busca os indicadores do dia direto no Banco Central.</p>
+
+  <div id="k-velho" class="aviso alerta" hidden style="margin-top:14px"></div>
+
+  <div class="grade g4" style="margin-top:20px" id="k-ind"></div>
+  <div class="acoes" style="margin-top:12px">
+    <button class="botao sec" id="k-atualizar" type="button">Atualizar pelo Banco Central</button>
+    <small id="k-status">A consulta é pública e não envia nenhum dado seu.</small>
+  </div>
+
+  <section class="cartao" style="margin-top:20px">
+    <span class="rotulo">Leitura do momento · validada em {new Date(MERCADO.validadoEm + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+    <ul style="margin:8px 0 0;padding-left:1.2em">{MERCADO.contexto.map((c) => <li style="margin-bottom:6px">{c}</li>)}</ul>
+  </section>
+
+  <h2>Mapa de risco</h2>
+  <p class="sub">A mesma classificação usada nas lições. Suba um degrau só depois de dominar o anterior.</p>
+  <div class="mapa">
+    {MAPA_RISCO.map((g) => (
+      <div class={`cartao ${g.risco}`}>
+        <span class={`selo ${g.risco}`}><span aria-hidden="true">{RISCOS[g.risco].icone}</span> {RISCOS[g.risco].nome}</span>
+        <p style="margin:10px 0 0;font-size:0.9rem">{RISCOS[g.risco].desc}</p>
+        <ul>{g.ativos.map((a) => <li><b>{a.nome}</b><small>{a.nota}</small></li>)}</ul>
+      </div>
+    ))}
+  </div>
+
+  <h2>Rendimento líquido em 1 ano</h2>
+  <section class="cartao"><p class="mudo">Opções seguras, já descontado o IR onde existe.</p><div id="k-rf"></div></section>
+
+  <h2>Tesouro Direto</h2>
+  <section class="cartao rolagem">
+    <table>
+      <thead><tr><th>Título</th><th>Taxa de referência</th><th>Risco</th><th>Para que serve</th></tr></thead>
+      <tbody>
+        {MERCADO.tesouro.map((t) => (
+          <tr><th>{t.titulo}</th><td>{t.taxa}</td><td><span class={`selo ${t.risco}`}>{RISCOS[t.risco as 'seguro'].nome}</span></td><td>{t.uso}</td></tr>
+        ))}
+      </tbody>
+    </table>
+    <small>Taxas de 12/11/2026. Mudam todos os dias: confira no site do Tesouro Direto antes de investir. Prefixados e IPCA+ são seguros no vencimento e oscilam se vendidos antes.</small>
+  </section>
+
+  <h2>Tributação em vigor</h2>
+  <section class="cartao rolagem">
+    <table>
+      <thead><tr><th>Investimento</th><th>Regra para pessoa física</th></tr></thead>
+      <tbody>{MERCADO.tributacao.map((t) => <tr><th>{t.item}</th><td>{t.regra}</td></tr>)}</tbody>
+    </table>
+    <small>Resumo educacional. Regras tributárias mudam; confirme na Receita Federal antes de declarar ou de tomar decisões.</small>
+  </section>
+
+  <h2>Fontes oficiais</h2>
+  <ul>{MERCADO.fontes.map((f) => <li><a href={f.url} target="_blank" rel="noopener noreferrer">{f.nome}</a></li>)}</ul>
+</Base>
+
+<script>
+  import { aoAbrir, atualizar, mercadoAtual } from '../lib/estado';
+  import { MERCADO } from '../data/mercado';
+  import { barras } from '../lib/graficos';
+  import { comparativoRendaFixa } from '../lib/visuais';
+  import { brl, pct, num, dataBR } from '../lib/formato';
+
+  const $ = (id: string) => document.getElementById(id)!;
+
+  aoAbrir((e) => {
+    function pintar() {
+      const m = mercadoAtual(e);
+      const real = ((1 + m.selic / 100) / (1 + m.ipca / 100) - 1) * 100;
+      $('k-data').textContent = `Indicadores de ${dataBR(m.em.slice(0, 10))} · fonte: ${m.origem}`;
+      $('k-ind').innerHTML = [
+        ['Selic', pct(m.selic), 'taxa básica, ao ano'],
+        ['CDI', pct(m.cdi), 'referência da renda fixa'],
+        ['IPCA 12 meses', pct(m.ipca), `meta de ${num(MERCADO.metaInflacao, 1)}%, teto de ${num(MERCADO.tetoMeta, 1)}%`],
+        ['Juro real', pct(real, 1), 'Selic acima da inflação'],
+        ['Dólar', brl(m.dolar, 2), 'cotação de venda'],
+        ['Ibovespa', num(MERCADO.ibovespa), `pontos em ${dataBR(MERCADO.validadoEm)}`],
+      ]
+        .map(([r, v, n]) => `<div class="cartao"><span class="rotulo">${r}</span><span class="cifra">${v}</span><small>${n}</small></div>`)
+        .join('');
+      barras($('k-rf'), { fmt: (n) => pct(n), itens: comparativoRendaFixa(m, MERCADO.poupanca) });
+      const dias = Math.floor((Date.now() - new Date(MERCADO.validadoEm).getTime()) / 86_400_000);
+      if (dias > 45) {
+        $('k-velho').hidden = false;
+        $('k-velho').textContent = `O texto das lições foi validado há ${dias} dias. Os indicadores podem ser atualizados pelo botão abaixo, mas regras tributárias e taxas do Tesouro devem ser conferidas nas fontes oficiais.`;
+      }
+    }
+    pintar();
+
+    $('k-atualizar').addEventListener('click', async () => {
+      const st = $('k-status');
+      st.textContent = 'Consultando o Banco Central…';
+      // Consulta por intervalo de datas (últimos 120 dias) e usa o valor mais recente.
+      // O endereço ".../ultimos/1" do SGS às vezes devolve resposta vazia (HTTP 304) para algumas séries; fica como reserva.
+      const fim = new Date();
+      const ini = new Date();
+      ini.setDate(ini.getDate() - 120);
+      const d = (x: Date) => x.toLocaleDateString('pt-BR');
+      const raiz = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.';
+      const serie = async (cod: number) => {
+        const urls = [`${raiz}${cod}/dados?formato=json&dataInicial=${d(ini)}&dataFinal=${d(fim)}`, `${raiz}${cod}/dados/ultimos/1?formato=json`];
+        let ultimo = 'sem resposta';
+        for (const u of urls) {
+          try {
+            const r = await fetch(u, { credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store' });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const dados = await r.json();
+            const valor = Number(dados[dados.length - 1].valor);
+            if (Number.isFinite(valor)) return valor;
+          } catch (err) {
+            ultimo = (err as Error).message;
+          }
+        }
+        throw new Error(ultimo);
+      };
+      try {
+        // Séries do SGS: 432 = meta Selic, 4389 = CDI anualizado, 13522 = IPCA em 12 meses, 1 = dólar (venda)
+        const [selic, cdi, ipca, dolar] = await Promise.all([serie(432), serie(4389), serie(13522), serie(1)]);
+        if (![selic, cdi, ipca, dolar].every((x) => Number.isFinite(x) && x > 0)) throw new Error('resposta inesperada');
+        await atualizar((s) => (s.mercado = { selic, cdi, ipca, dolar, em: new Date().toISOString() }));
+        pintar();
+        st.textContent = 'Atualizado. Gráficos e simuladores já usam os novos valores.';
+      } catch (err) {
+        st.textContent = 'Não foi possível consultar agora (' + (err as Error).message + '). Os valores validados continuam em uso.';
+      }
+    });
+  });
+</script>

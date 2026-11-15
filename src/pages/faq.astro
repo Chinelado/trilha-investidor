@@ -1,0 +1,48 @@
+---
+import Base from '../layouts/Base.astro';
+import { FAQ } from '../data/faq';
+---
+<Base titulo="Dúvidas" atual="faq">
+  <span class="rotulo">Perguntas frequentes</span>
+  <h1>Dúvidas comuns</h1>
+  <p class="sub">Respostas curtas para as perguntas que quase todo mundo faz ao começar.</p>
+
+  <div style="margin:18px 0;max-width:480px">
+    <label for="busca">Buscar</label>
+    <input type="search" id="busca" placeholder="Ex.: FGC, imposto, backup" autocomplete="off" />
+  </div>
+  <p class="mudo" id="vazio" hidden>Nada encontrado. Tente outra palavra ou veja o Glossário.</p>
+
+  {FAQ.map((g) => (
+    <section class="cartao grupo" style="margin-top:12px">
+      <h2 style="margin:0 0 4px">{g.tema}</h2>
+      {g.itens.map((i) => (
+        <details class="item">
+          <summary>{i.p}</summary>
+          <div>{i.r}</div>
+        </details>
+      ))}
+    </section>
+  ))}
+</Base>
+
+<script>
+  const limpa = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const busca = document.getElementById('busca') as HTMLInputElement;
+  busca.addEventListener('input', () => {
+    const q = limpa(busca.value.trim());
+    let total = 0;
+    document.querySelectorAll<HTMLElement>('.grupo').forEach((g) => {
+      let n = 0;
+      g.querySelectorAll<HTMLDetailsElement>('details').forEach((d) => {
+        const ok = !q || limpa(d.textContent || '').includes(q);
+        d.hidden = !ok;
+        d.open = !!q && ok;
+        if (ok) n++;
+      });
+      g.hidden = n === 0;
+      total += n;
+    });
+    document.getElementById('vazio')!.hidden = total > 0;
+  });
+</script>

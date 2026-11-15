@@ -1,0 +1,271 @@
+---
+import Base from '../layouts/Base.astro';
+import { CLASSES, MODELOS } from '../lib/carteira';
+---
+<Base titulo="Carteira" atual="carteira">
+  <span class="rotulo">Análise da carteira</span>
+  <h1>Seus investimentos</h1>
+  <p class="sub">Cadastre o que você tem hoje. O sistema separa a reserva de emergência, compara o restante com a sua alocação-alvo e calcula quanto deveria estar em cada investimento e o que remanejar.</p>
+  <p class="aviso" style="margin-top:12px;max-width:760px">Os valores abaixo são contas sobre a alocação-alvo que <b>você</b> escolhe, mais regras gerais das lições. Não é recomendação individual: antes de vender algo, considere impostos, carência, marcação a mercado e, para valores relevantes, um profissional certificado.</p>
+
+  <section class="cartao" style="margin-top:20px">
+    <span class="rotulo" id="f-titulo">Adicionar investimento</span>
+    <form id="f" style="margin-top:10px">
+      <input type="hidden" id="f-id" />
+      <div class="campos">
+        <div><label for="f-nome">Nome <small>Ex.: Tesouro Selic 2029, CDB Banco X, BOVA11</small></label><input type="text" id="f-nome" maxlength="60" required /></div>
+        <div>
+          <label for="f-classe">Tipo <small id="f-ex">&nbsp;</small></label>
+          <select id="f-classe" required>
+            {CLASSES.map((c) => <option value={c.id} data-ex={c.ex}>{c.nome}</option>)}
+          </select>
+        </div>
+        <div><label for="f-valor">Valor atual (R$) <small>Saldo de hoje</small></label><input type="number" id="f-valor" min="0" step="0.01" inputmode="decimal" required /></div>
+        <div><label for="f-emissor">Instituição emissora <small>Opcional. Usada no limite do FGC</small></label><input type="text" id="f-emissor" maxlength="40" /></div>
+      </div>
+      <div class="acoes" style="margin-top:14px">
+        <button class="botao" id="f-botao">Adicionar</button>
+        <button class="botao sec" type="button" id="f-cancelar" hidden>Cancelar edição</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="cartao" style="margin-top:14px">
+    <span class="rotulo">Alocação-alvo da carteira de longo prazo</span>
+    <div class="campos" style="margin-top:10px">
+      <div>
+        <label for="a-modelo">Modelo <small>Ponto de partida didático; ajuste ao seu perfil</small></label>
+        <select id="a-modelo">
+          {Object.entries(MODELOS).map(([k, m]) => <option value={k}>{m.nome}</option>)}
+          <option value="personalizado">Personalizado</option>
+        </select>
+      </div>
+      <div>
+        <label for="a-meses">Reserva de emergência <small>Em meses de despesas</small></label>
+        <select id="a-meses"><option value="3">3 meses</option><option value="6">6 meses</option><option value="9">9 meses</option><option value="12">12 meses</option></select>
+      </div>
+    </div>
+    <div class="campos" style="margin-top:14px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))" id="a-pcts">
+      {CLASSES.filter((c) => c.id !== 'caixa').map((c) => (
+        <div><label for={`a-${c.id}`}>{c.nome} (%)</label><input type="number" id={`a-${c.id}`} data-classe={c.id} min="0" max="100" step="1" inputmode="numeric" /></div>
+      ))}
+    </div>
+    <p id="a-soma" class="mudo" style="margin:10px 0 0"></p>
+  </section>
+
+  <div id="vazio" class="cartao pastel p1" style="margin-top:14px" hidden>
+    <h2 style="margin-top:0">Nenhum investimento cadastrado</h2>
+    <p>Adicione acima cada aplicação que você tem: conta remunerada, poupança, CDBs, Tesouro, fundos, ações, FIIs, cripto. A análise aparece assim que houver pelo menos um item.</p>
+  </div>
+
+  <div id="resultado" hidden>
+    <div class="grade g4" style="margin-top:14px" id="r-tiles"></div>
+
+    <section class="cartao" style="margin-top:14px">
+      <span class="rotulo">Diagnóstico</span>
+      <ul class="lista" id="r-alertas" style="margin-top:6px"></ul>
+    </section>
+
+    <section class="cartao" style="margin-top:14px">
+      <span class="rotulo">Quanto você tem × quanto deveria ter, por tipo</span>
+      <div class="g-legenda" style="margin-top:12px"><span><i style="background:var(--s1)"></i>Hoje</span><span><i style="background:var(--s2)"></i>Alvo</span></div>
+      <div id="r-barras" class="g-barras"></div>
+      <div class="rolagem" style="margin-top:16px"><table id="r-classes"></table></div>
+    </section>
+
+    <section class="cartao" style="margin-top:14px">
+      <span class="rotulo">Quanto deveria estar em cada investimento</span>
+      <p class="mudo" style="margin-top:6px">O alvo de cada tipo é dividido entre os investimentos que você já tem nele, na mesma proporção atual.</p>
+      <div class="rolagem"><table id="r-itens"></table></div>
+    </section>
+
+    <div class="grade g2" style="margin-top:14px">
+      <section class="cartao">
+        <span class="rotulo">Caminho 1 · corrigir com os aportes</span>
+        <p class="mudo" style="margin-top:6px">Não gera imposto nem perda por venda antecipada. É o caminho preferível quando o desvio é pequeno.</p>
+        <div id="r-aporte"></div>
+      </section>
+      <section class="cartao">
+        <span class="rotulo">Caminho 2 · remanejar o que já existe</span>
+        <p class="mudo" style="margin-top:6px">Mais rápido, mas vender pode gerar IR, e títulos prefixados ou IPCA+ podem estar abaixo do preço de compra.</p>
+        <div id="r-transf"></div>
+      </section>
+    </div>
+  </div>
+</Base>
+
+<script>
+  import { aoAbrir, atualizar } from '../lib/estado';
+  import { CLASSES, CLASSES_LONGO, MODELOS, analisar, alvoEmUso, nomeClasse } from '../lib/carteira';
+  import { RISCOS } from '../data/mercado';
+  import { brl, pct, esc } from '../lib/formato';
+
+  const B = document.documentElement.dataset.base || '';
+  const $ = (id: string) => document.getElementById(id)!;
+  const inp = (id: string) => $(id) as HTMLInputElement;
+  const selo = (r: keyof typeof RISCOS) => `<span class="selo ${r}"><span aria-hidden="true">${RISCOS[r].icone}</span> ${RISCOS[r].nome}</span>`;
+  const ajuste = (dif: number, ok: boolean) =>
+    ok ? '<span class="selo neutro">No alvo</span>' : dif > 0 ? `<b style="color:var(--bom)">Aumentar ${brl(dif)}</b>` : `<b style="color:var(--arr)">Reduzir ${brl(-dif)}</b>`;
+
+  aoAbrir((e) => {
+    const classeSel = $('f-classe') as HTMLSelectElement;
+    const exemplo = () => ($('f-ex').textContent = classeSel.selectedOptions[0].dataset.ex || '');
+    classeSel.addEventListener('change', exemplo);
+    exemplo();
+
+    function pintarAlvo() {
+      const c = e.carteira;
+      ($('a-modelo') as HTMLSelectElement).value = c.modelo;
+      ($('a-meses') as HTMLSelectElement).value = String(c.mesesReserva);
+      const alvo = alvoEmUso(e);
+      let soma = 0;
+      CLASSES_LONGO.forEach((cl) => {
+        inp('a-' + cl.id).value = String(alvo[cl.id] || 0);
+        soma += alvo[cl.id] || 0;
+      });
+      $('a-soma').innerHTML = soma === 100 ? 'Soma: 100%. A reserva de emergência fica fora desta conta.' : `<span class="erro">Soma: ${soma}%. Ajuste para chegar a 100%.</span>`;
+    }
+
+    function pintar() {
+      pintarAlvo();
+      const tem = e.carteira.itens.length > 0;
+      $('vazio').hidden = tem;
+      $('resultado').hidden = !tem;
+      if (!tem) return;
+      const a = analisar(e);
+
+      $('r-tiles').innerHTML = [
+        ['Total investido', brl(a.total), `${e.carteira.itens.length} investimento(s)`],
+        ['Reserva de emergência', brl(a.reservaAtual), a.reservaAlvo ? `alvo de ${brl(a.reservaAlvo)}` : 'informe despesas em Metas'],
+        ['Carteira de longo prazo', brl(a.longoPrazo), 'total menos a reserva'],
+        ['Fora do alvo', brl(a.classes.filter((c) => !c.noAlvo && c.dif > 0).reduce((s, c) => s + c.dif, 0)), 'valor a realocar'],
+      ]
+        .map(([r, v, n]) => `<div class="cartao"><span class="rotulo">${r}</span><span class="cifra">${v}</span><small>${n}</small></div>`)
+        .join('');
+
+      const icone = { alto: '⚠', moderado: '●', seguro: '✓' };
+      $('r-alertas').innerHTML = a.alertas.map((al) => `<li><span class="selo ${al.nivel}" style="flex:none">${icone[al.nivel]}</span><span class="cresce">${esc(al.texto)}</span></li>`).join('');
+
+      const max = Math.max(...a.classes.flatMap((c) => [c.atual, c.alvo]), 1);
+      const visiveis = a.classes.filter((c) => c.atual > 0 || c.alvo > 0);
+      $('r-barras').innerHTML = visiveis
+        .map(
+          (c) => `<div class="g-linha" style="align-items:start"><span class="g-rot">${esc(c.nome)}</span><span style="display:grid;gap:2px">
+            <span class="g-trilho" style="height:12px" title="Hoje: ${brl(c.atual)}"><span class="g-barra" style="width:${(c.atual / max) * 100}%;background:var(--s1)"></span></span>
+            <span class="g-trilho" style="height:12px" title="Alvo: ${brl(c.alvo)}"><span class="g-barra" style="width:${(c.alvo / max) * 100}%;background:var(--s2)"></span></span></span>
+            <span class="g-val" style="font-weight:400;font-size:0.8rem;line-height:1.15">${brl(c.atual)}<br />${brl(c.alvo)}</span></div>`,
+        )
+        .join('');
+
+      const p = (v: number) => (a.total ? pct((v / a.total) * 100, 0) : '—');
+      $('r-classes').innerHTML = `<thead><tr><th>Tipo</th><th>Risco</th><th class="n">Hoje</th><th class="n">Alvo</th><th class="n">Ajuste</th></tr></thead><tbody>${visiveis
+        .map((c) => `<tr><th>${esc(c.nome)}</th><td>${selo(c.risco)}</td><td class="n">${brl(c.atual)}<br /><small>${p(c.atual)}</small></td><td class="n">${brl(c.alvo)}<br /><small>${p(c.alvo)}</small></td><td class="n">${ajuste(c.dif, c.noAlvo)}</td></tr>`)
+        .join('')}</tbody>`;
+
+      $('r-itens').innerHTML = `<thead><tr><th>Investimento</th><th class="n">Hoje</th><th class="n">Deveria ter</th><th class="n">Ajuste</th><th></th></tr></thead><tbody>${a.itens
+        .map(
+          (i) => `<tr><th>${esc(i.nome)}<br /><small style="font-weight:400">${esc(nomeClasse(i.classe))}${i.emissor ? ' · ' + esc(i.emissor) : ''}</small></th><td class="n">${brl(i.valor)}</td><td class="n">${brl(i.alvo)}</td><td class="n">${ajuste(i.dif, i.noAlvo)}</td><td class="n" style="white-space:nowrap"><button class="mini" data-editar="${i.id}" type="button">Editar</button> <button class="mini" data-remover="${i.id}" type="button">Remover</button></td></tr>`,
+        )
+        .join('')}${a.classes
+        .filter((c) => c.atual === 0 && c.alvo >= 1 && !c.noAlvo)
+        .map((c) => `<tr><th>Ainda não tem<br /><small style="font-weight:400">${esc(c.nome)}</small></th><td class="n">${brl(0)}</td><td class="n">${brl(c.alvo)}</td><td class="n">${ajuste(c.dif, false)}</td><td></td></tr>`)
+        .join('')}</tbody>`;
+
+      $('r-aporte').innerHTML = !e.perfil.aporte
+        ? `<p class="aviso">Informe seu aporte mensal em <a href="${B}/metas/">Metas</a> para ver a divisão sugerida pelo cálculo.</p>`
+        : `<p>Divisão do próximo aporte de <b>${brl(e.perfil.aporte)}</b>:</p><ul class="lista">${a.aporte
+            .map((x) => `<li><span class="cresce">${esc(nomeClasse(x.classe))}</span><b>${brl(x.valor)}</b></li>`)
+            .join('')}</ul>${a.aporte.length === 1 && a.aporte[0].classe === 'caixa' ? '<small>Enquanto a reserva não estiver completa, todo o aporte vai para ela.</small>' : '<small>Recalcule a cada mês: a divisão muda conforme os preços variam.</small>'}`;
+
+      $('r-transf').innerHTML = a.transferencias.length
+        ? `<ul class="lista">${a.transferencias
+            .map((t) => `<li><span class="cresce">De <b>${esc(nomeClasse(t.de))}</b><br />para <b>${esc(nomeClasse(t.para))}</b></span><b>${brl(t.valor)}</b></li>`)
+            .join('')}</ul>`
+        : '<p class="aviso">Nada a remanejar: todos os tipos estão dentro da margem de 1% do alvo.</p>';
+    }
+    pintar();
+
+    const salvarPerfil = (s: typeof e) => {
+      // Mantém Metas coerente com a carteira cadastrada.
+      const caixa = s.carteira.itens.filter((i) => i.classe === 'caixa').reduce((x, i) => x + i.valor, 0);
+      const total = s.carteira.itens.reduce((x, i) => x + i.valor, 0);
+      s.perfil.reserva = caixa;
+      s.perfil.investido = total - caixa;
+    };
+
+    const limparForm = () => {
+      ($('f') as HTMLFormElement).reset();
+      inp('f-id').value = '';
+      $('f-titulo').textContent = 'Adicionar investimento';
+      $('f-botao').textContent = 'Adicionar';
+      $('f-cancelar').hidden = true;
+      exemplo();
+    };
+    $('f-cancelar').addEventListener('click', limparForm);
+
+    $('f').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const item = {
+        id: inp('f-id').value || Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        nome: inp('f-nome').value.trim(),
+        classe: classeSel.value,
+        valor: Math.max(0, Number(inp('f-valor').value) || 0),
+        emissor: inp('f-emissor').value.trim() || undefined,
+      };
+      await atualizar((s) => {
+        const k = s.carteira.itens.findIndex((i) => i.id === item.id);
+        if (k >= 0) s.carteira.itens[k] = item;
+        else s.carteira.itens.push(item);
+        salvarPerfil(s);
+      });
+      limparForm();
+      pintar();
+    });
+
+    $('r-itens').addEventListener('click', async (ev) => {
+      const alvo = ev.target as HTMLElement;
+      if (alvo.dataset.remover) {
+        if (!confirm('Remover este investimento da lista?')) return;
+        await atualizar((s) => {
+          s.carteira.itens = s.carteira.itens.filter((i) => i.id !== alvo.dataset.remover);
+          salvarPerfil(s);
+        });
+        pintar();
+      } else if (alvo.dataset.editar) {
+        const i = e.carteira.itens.find((x) => x.id === alvo.dataset.editar)!;
+        inp('f-id').value = i.id;
+        inp('f-nome').value = i.nome;
+        classeSel.value = i.classe;
+        inp('f-valor').value = String(i.valor);
+        inp('f-emissor').value = i.emissor || '';
+        $('f-titulo').textContent = 'Editar investimento';
+        $('f-botao').textContent = 'Salvar alteração';
+        $('f-cancelar').hidden = false;
+        exemplo();
+        $('f').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+
+    $('a-modelo').addEventListener('change', async (ev) => {
+      const m = (ev.target as HTMLSelectElement).value;
+      await atualizar((s) => {
+        if (m === 'personalizado') s.carteira.alvo = { ...alvoEmUso(s) };
+        s.carteira.modelo = m;
+      });
+      pintar();
+    });
+    $('a-meses').addEventListener('change', async (ev) => {
+      await atualizar((s) => (s.carteira.mesesReserva = Number((ev.target as HTMLSelectElement).value)));
+      pintar();
+    });
+    $('a-pcts').addEventListener('change', async () => {
+      await atualizar((s) => {
+        s.carteira.alvo = Object.fromEntries(CLASSES_LONGO.map((c) => [c.id, Math.max(0, Math.min(100, Number(inp('a-' + c.id).value) || 0))]));
+        s.carteira.modelo = 'personalizado';
+      });
+      pintar();
+    });
+    void MODELOS;
+    void CLASSES;
+  });
+</script>

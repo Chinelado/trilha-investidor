@@ -1,0 +1,143 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base titulo="Ajustes" atual="config">
+  <span class="rotulo">Segurança e preferências</span>
+  <h1>Ajustes</h1>
+
+  <section class="cartao" style="margin-top:20px">
+    <h2 style="margin-top:0">Como seus dados são protegidos</h2>
+    <ul style="padding-left:1.2em;margin:0">
+      <li>Progresso, metas, patrimônio e anotações são cifrados com <b>AES-256-GCM</b> antes de serem gravados neste dispositivo.</li>
+      <li>A chave é derivada da sua senha com <b>PBKDF2-SHA256 (600 mil iterações)</b>. A senha não é gravada em lugar nenhum.</li>
+      <li>Nada é enviado a servidores. Não há conta, cadastro nem rastreamento.</li>
+      <li>O app tranca sozinho após 15 minutos sem uso e ao fechar a aba.</li>
+      <li>Limpar os dados do navegador apaga tudo. <b>Faça backup com regularidade.</b></li>
+    </ul>
+    <p class="mudo" id="a-info" style="margin-top:12px"></p>
+  </section>
+
+  <section class="cartao" style="margin-top:14px">
+    <h2 style="margin-top:0">Backup e outro aparelho</h2>
+    <p class="mudo">O arquivo de backup sai cifrado com a sua senha. Para usar no celular: exporte aqui, envie o arquivo para o celular, abra o site lá e escolha "restaurar backup" na tela de entrada.</p>
+    <div class="acoes">
+      <button class="botao" id="a-exportar" type="button">Exportar backup cifrado</button>
+    </div>
+    <hr style="border:0;border-top:1px solid var(--linha);margin:18px 0" />
+    <h3>Importar um backup neste aparelho</h3>
+    <p class="mudo">Substitui os dados atuais pelos do arquivo. A senha deste aparelho continua a mesma.</p>
+    <form id="a-importar" class="campos" style="align-items:end">
+      <div><label for="a-arq">Arquivo</label><input type="file" id="a-arq" accept=".json,.trilha,application/json" required /></div>
+      <div><label for="a-senha-arq">Senha do backup</label><input type="password" id="a-senha-arq" autocomplete="off" required /></div>
+      <div><button class="botao sec">Importar</button></div>
+    </form>
+    <p id="a-imp-msg" role="status"></p>
+  </section>
+
+  <section class="cartao" style="margin-top:14px">
+    <h2 style="margin-top:0">Ritmo da trilha</h2>
+    <div class="campos">
+      <div><label for="a-inicio">Data de início <small>A semana 1 começa nesta data</small></label><input type="date" id="a-inicio" /></div>
+      <div><label class="opcao" style="margin-top:22px"><input type="checkbox" id="a-livre" /> <span><b>Ritmo livre</b><small style="display:block">Libera todas as lições de uma vez</small></span></label></div>
+    </div>
+  </section>
+
+  <section class="cartao" style="margin-top:14px">
+    <h2 style="margin-top:0">Trocar a senha</h2>
+    <form id="a-senha" class="campos" style="align-items:end">
+      <div><label for="a-atual">Senha atual</label><input type="password" id="a-atual" autocomplete="current-password" required /></div>
+      <div><label for="a-nova">Nova senha</label><input type="password" id="a-nova" autocomplete="new-password" minlength="8" required /></div>
+      <div><label for="a-nova2">Repita a nova senha</label><input type="password" id="a-nova2" autocomplete="new-password" minlength="8" required /></div>
+      <div><button class="botao sec">Trocar senha</button></div>
+    </form>
+    <p id="a-senha-msg" role="status"></p>
+  </section>
+
+  <section class="cartao" style="margin-top:14px">
+    <h2 style="margin-top:0">Instalar no celular</h2>
+    <ul style="padding-left:1.2em;margin:0">
+      <li><b>Android (Chrome):</b> menu ⋮ → "Adicionar à tela inicial" ou "Instalar app".</li>
+      <li><b>iPhone (Safari):</b> botão Compartilhar → "Adicionar à Tela de Início".</li>
+      <li><b>Computador (Chrome/Edge):</b> ícone de instalar na barra de endereço.</li>
+    </ul>
+    <p class="mudo" style="margin-top:10px">Depois de instalado, as páginas já visitadas funcionam sem internet. A instalação exige o site publicado em https.</p>
+  </section>
+
+  <section class="cartao" style="margin-top:14px">
+    <h2 style="margin-top:0">Zona de perigo</h2>
+    <p class="mudo">Apaga definitivamente todos os dados deste dispositivo. Exporte um backup antes, se quiser guardá-los.</p>
+    <button class="botao perigo" id="a-apagar" type="button">Apagar todos os dados</button>
+  </section>
+</Base>
+
+<script>
+  import * as cofre from '../lib/cofre';
+  import { aoAbrir, atualizar, definir, hoje } from '../lib/estado';
+  import { dataBR } from '../lib/formato';
+
+  const B = document.documentElement.dataset.base || '';
+  const $ = (id: string) => document.getElementById(id) as HTMLInputElement;
+  const msg = (id: string, texto: string, ok = true) => {
+    const el = document.getElementById(id)!;
+    el.textContent = texto;
+    el.className = ok ? 'ok' : 'erro';
+  };
+
+  aoAbrir((e) => {
+    document.getElementById('a-info')!.textContent = `Cofre criado em ${dataBR(e.criadoEm)} · última alteração em ${new Date(e.atualizadoEm).toLocaleString('pt-BR')}.`;
+    $('a-inicio').value = e.inicioTrilha;
+    $('a-inicio').max = hoje();
+    $('a-livre').checked = e.ritmoLivre;
+
+    $('a-inicio').addEventListener('change', () => $('a-inicio').value && atualizar((s) => (s.inicioTrilha = $('a-inicio').value)));
+    $('a-livre').addEventListener('change', () => atualizar((s) => (s.ritmoLivre = $('a-livre').checked)));
+
+    $('a-exportar').addEventListener('click', () => {
+      const blob = new Blob([cofre.exportar()], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `trilha-backup-${hoje()}.json`;
+      a.click();
+      atualizar((s) => (s.backupEm = new Date().toISOString()));
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
+
+    document.getElementById('a-importar')!.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const f = $('a-arq').files?.[0];
+      if (!f) return;
+      let novo;
+      try {
+        novo = await cofre.lerBackup(await f.text(), $('a-senha-arq').value);
+      } catch {
+        return msg('a-imp-msg', 'Não foi possível abrir o backup. Confira o arquivo e a senha.', false);
+      }
+      const n = Object.values(novo.licoes || {}).filter((l: any) => l.concluidaEm).length;
+      if (!confirm(`O backup tem ${n} lição(ões) concluída(s) e foi alterado em ${new Date(novo.atualizadoEm).toLocaleString('pt-BR')}.\n\nSubstituir os dados deste aparelho?`)) return;
+      await cofre.salvar(novo);
+      definir(novo);
+      $('a-senha-arq').value = '';
+      msg('a-imp-msg', 'Backup importado. Recarregando…');
+      setTimeout(() => location.reload(), 800);
+    });
+
+    document.getElementById('a-senha')!.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if ($('a-nova').value !== $('a-nova2').value) return msg('a-senha-msg', 'As senhas novas não coincidem.', false);
+      try {
+        await cofre.trocarSenha($('a-atual').value, $('a-nova').value);
+      } catch {
+        return msg('a-senha-msg', 'Senha atual incorreta.', false);
+      }
+      (ev.target as HTMLFormElement).reset();
+      msg('a-senha-msg', 'Senha trocada. Backups antigos continuam abrindo com a senha antiga.');
+    });
+
+    $('a-apagar').addEventListener('click', () => {
+      if (!confirm('Apagar definitivamente todos os dados deste dispositivo?')) return;
+      if (prompt('Para confirmar, digite APAGAR') !== 'APAGAR') return;
+      cofre.apagarTudo();
+      location.href = B + '/';
+    });
+  });
+</script>

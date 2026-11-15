@@ -1,0 +1,237 @@
+---
+import '../styles/global.css';
+interface Props { titulo: string; atual?: string }
+const { titulo, atual = '' } = Astro.props;
+const b = import.meta.env.BASE_URL.replace(/\/$/, '');
+const grupos: { nome: string; fim?: boolean; itens: [string, string, string][] }[] = [
+  { nome: '', itens: [['', 'Início', 'casa']] },
+  { nome: 'Aprender', itens: [['trilha', 'Trilha', 'trilha'], ['diario', 'Diário', 'dia'], ['resumo', 'Resumo', 'resumo']] },
+  { nome: 'Planejar', itens: [['perfil', 'Perfil', 'pessoa'], ['carteira', 'Carteira', 'carteira'], ['metas', 'Metas', 'alvo'], ['ferramentas', 'Ferramentas', 'calc']] },
+  { nome: 'Consultar', itens: [['mercado', 'Mercado', 'grafico'], ['glossario', 'Glossário', 'livro'], ['faq', 'Dúvidas', 'ajuda']] },
+  { nome: '', fim: true, itens: [['config', 'Ajustes', 'ajustes']] },
+];
+const icones: Record<string, string> = {
+  casa: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>',
+  trilha: '<path d="M4 19h4v-6h4V7h4V3h4"/><circle cx="4" cy="19" r="1"/>',
+  dia: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  resumo: '<path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h7M9 8h3"/>',
+  carteira: '<path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/>',
+  pessoa: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  alvo: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  calc: '<rect x="5" y="3" width="14" height="18" rx="3"/><path d="M8 7h8M8 12h2M12 12h0M16 12h0M8 16h2M12 16h0M16 16h0"/>',
+  grafico: '<path d="M4 20V4M4 20h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/>',
+  livro: '<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/>',
+  ajuda: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 1-1 1.700M12 17h0"/>',
+  ajustes: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.100 2.100M16.300 16.300l2.100 2.100M5.6 18.400l2.100-2.100M16.300 7.700l2.100-2.100"/>',
+};
+---
+<!doctype html>
+<html lang="pt-BR" data-base={b}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{titulo} · Trilha do Investidor</title>
+    <meta name="description" content="Sistema pessoal de aprendizado sobre investimentos no Brasil." />
+    <meta name="robots" content="noindex" />
+    {import.meta.env.PROD && (
+      <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.bcb.gov.br; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+    )}
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#5746e0" />
+    <link rel="manifest" href={`${b}/manifest.webmanifest`} />
+    <link rel="icon" href={`${b}/icon.svg`} type="image/svg+xml" />
+    <link rel="apple-touch-icon" href={`${b}/icon-192.png`} />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="lado">
+        <div class="lado-topo">
+          <a class="logo" href={`${b}/`}>
+            <span class="logo-marca"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 16l5-6 4 3 5-8"/><path d="M15 5h4v4"/></svg></span>
+            Trilha do Investidor
+          </a>
+          <button class="trancar" id="trancar" type="button">Trancar</button>
+        </div>
+        <nav class="nav" aria-label="Principal">
+          {grupos.map((g) => (
+            <>
+              {g.nome && <span class="nav-grupo">{g.nome}</span>}
+              {g.itens.map(([p, n, i]) => (
+                <a href={`${b}/${p ? p + '/' : ''}`} class={g.fim ? 'fim' : undefined} aria-current={atual === p ? 'page' : undefined}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={icones[i]} />
+                  {n}
+                </a>
+              ))}
+            </>
+          ))}
+        </nav>
+      </aside>
+
+      <div class="conteudo">
+        <main><slot /></main>
+        <footer class="rodape">
+          Conteúdo educacional. Não é recomendação individual de investimento. Seus dados ficam cifrados neste dispositivo e não são enviados a nenhum servidor.
+        </footer>
+      </div>
+    </div>
+
+    <div class="cofre" id="cofre" hidden>
+      <form id="cofre-form" class="pilha" autocomplete="off">
+        <div>
+          <span class="rotulo">Trilha do Investidor</span>
+          <h1 id="cofre-titulo">Entrar</h1>
+          <p class="sub" id="cofre-msg"></p>
+        </div>
+        <div id="cofre-arquivo-bloco" hidden>
+          <label for="cofre-arquivo">Arquivo de backup</label>
+          <input type="file" id="cofre-arquivo" accept=".json,.trilha,application/json" />
+        </div>
+        <div>
+          <label for="cofre-senha">Senha</label>
+          <input type="password" id="cofre-senha" minlength="8" required />
+        </div>
+        <div id="cofre-senha2-bloco" hidden>
+          <label for="cofre-senha2">Repita a senha</label>
+          <input type="password" id="cofre-senha2" minlength="8" />
+        </div>
+        <p class="erro" id="cofre-erro" role="alert" hidden></p>
+        <button class="botao" id="cofre-botao">Entrar</button>
+        <p><a href="#" id="cofre-alternar"></a></p>
+        <details id="cofre-esqueci" hidden>
+          <summary>Esqueci a senha</summary>
+          <p class="mudo">Não existe recuperação: sem a senha, os dados não podem ser lidos por ninguém. Você pode apagar tudo neste dispositivo e recomeçar, ou restaurar um backup cuja senha você lembre.</p>
+          <button class="botao perigo" type="button" id="cofre-apagar">Apagar os dados deste dispositivo</button>
+        </details>
+      </form>
+    </div>
+
+    <script>
+      import * as cofre from '../lib/cofre';
+      import { definir, estadoInicial } from '../lib/estado';
+
+      const B = document.documentElement.dataset.base || '';
+      const $ = (id: string) => document.getElementById(id)!;
+      const tela = $('cofre');
+      const senha = $('cofre-senha') as HTMLInputElement;
+      const senha2 = $('cofre-senha2') as HTMLInputElement;
+      const arquivo = $('cofre-arquivo') as HTMLInputElement;
+      const erro = $('cofre-erro');
+      const botao = $('cofre-botao') as HTMLButtonElement;
+      let modo: 'entrar' | 'criar' | 'restaurar' = 'entrar';
+
+      function pintar() {
+        const tem = cofre.existeCofre();
+        if (modo !== 'restaurar') modo = tem ? 'entrar' : 'criar';
+        $('cofre-titulo').textContent = modo === 'criar' ? 'Crie sua senha' : modo === 'restaurar' ? 'Restaurar backup' : 'Entrar';
+        $('cofre-msg').textContent =
+          modo === 'criar'
+            ? 'A senha cifra tudo o que você registrar aqui (progresso, metas, patrimônio). Ela não pode ser recuperada, então guarde-a em um gerenciador de senhas. Mínimo de 8 caracteres.'
+            : modo === 'restaurar'
+              ? 'Escolha o arquivo exportado no outro aparelho e digite a senha usada lá. Ela passa a ser a senha deste dispositivo.'
+              : 'Digite a senha para abrir seus dados neste dispositivo.';
+        $('cofre-senha2-bloco').hidden = modo !== 'criar';
+        $('cofre-arquivo-bloco').hidden = modo !== 'restaurar';
+        $('cofre-esqueci').hidden = modo !== 'entrar';
+        senha.autocomplete = modo === 'criar' ? 'new-password' : 'current-password';
+        botao.textContent = modo === 'criar' ? 'Criar e começar' : modo === 'restaurar' ? 'Restaurar' : 'Entrar';
+        const alt = $('cofre-alternar');
+        alt.textContent = modo === 'restaurar' ? 'Voltar' : tem ? '' : 'Já uso em outro aparelho: restaurar backup';
+        alt.hidden = !alt.textContent;
+        erro.hidden = true;
+      }
+
+      function falha(msg: string) {
+        erro.textContent = msg;
+        erro.hidden = false;
+        botao.disabled = false;
+      }
+
+      $('cofre-alternar').addEventListener('click', (ev) => {
+        ev.preventDefault();
+        modo = modo === 'restaurar' ? 'entrar' : 'restaurar';
+        pintar();
+      });
+
+      $('cofre-form').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        erro.hidden = true;
+        botao.disabled = true;
+        try {
+          let estado;
+          if (modo === 'criar') {
+            if (senha.value.length < 8) return falha('Use pelo menos 8 caracteres.');
+            if (senha.value !== senha2.value) return falha('As senhas não coincidem.');
+            estado = estadoInicial();
+            await cofre.criar(senha.value, estado);
+          } else if (modo === 'restaurar') {
+            const f = arquivo.files?.[0];
+            if (!f) return falha('Escolha o arquivo de backup.');
+            try {
+              estado = await cofre.lerBackup(await f.text(), senha.value);
+            } catch {
+              return falha('Não foi possível abrir o backup. Confira o arquivo e a senha.');
+            }
+            await cofre.criar(senha.value, estado);
+          } else {
+            try {
+              estado = await cofre.abrir(senha.value);
+            } catch {
+              return falha('Senha incorreta.');
+            }
+          }
+          senha.value = senha2.value = '';
+          tela.hidden = true;
+          botao.disabled = false;
+          definir(estado);
+        } catch (e) {
+          falha('Algo deu errado: ' + (e as Error).message);
+        }
+      });
+
+      $('cofre-apagar').addEventListener('click', () => {
+        if (confirm('Apagar definitivamente todos os dados deste dispositivo? Isso não pode ser desfeito.')) {
+          cofre.apagarTudo();
+          location.href = B + '/';
+        }
+      });
+
+      $('trancar').addEventListener('click', () => {
+        cofre.trancar();
+        location.reload();
+      });
+
+      // Se outra aba alterar os dados, recarrega para não sobrescrever com uma cópia antiga.
+      addEventListener('storage', (ev) => {
+        if ((ev.key === 'ti.dados' || ev.key === 'ti.meta') && cofre.estaAberto()) location.reload();
+      });
+
+      // Bloqueio automático por inatividade
+      ['pointerdown', 'keydown'].forEach((t) => addEventListener(t, () => cofre.estaAberto() && cofre.marcarAtividade(), { passive: true }));
+      setInterval(() => {
+        const ultima = Number(sessionStorage.getItem('ti.atividade') || 0);
+        if (cofre.estaAberto() && Date.now() - ultima > cofre.MINUTOS_BLOQUEIO * 60_000) {
+          cofre.trancar();
+          location.reload();
+        }
+      }, 30_000);
+
+      (async () => {
+        if (!cofre.criptoDisponivel()) {
+          tela.hidden = false;
+          $('cofre-form').innerHTML =
+            '<h1>Conexão não segura</h1><p class="sub">A criptografia do navegador só funciona em endereços <b>https://</b> ou em <b>localhost</b>. Abra o site pelo endereço publicado (com https) para usar seus dados com segurança.</p>';
+          return;
+        }
+        const estado = await cofre.restaurarSessao();
+        if (estado) return definir(estado);
+        pintar();
+        tela.hidden = false;
+        senha.focus();
+      })();
+
+      if ('serviceWorker' in navigator && import.meta.env.PROD) {
+        navigator.serviceWorker.register(B + '/sw.js').catch(() => {});
+      }
+    </script>
+  </body>
+</html>

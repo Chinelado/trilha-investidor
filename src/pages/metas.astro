@@ -1,0 +1,140 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base titulo="Metas" atual="metas">
+  <span class="rotulo">Metas claras e mensuráveis</span>
+  <h1>Suas metas</h1>
+  <p class="sub">As metas de patrimônio são calculadas com os seus números. Preencha uma vez e atualize quando algo mudar. Tudo fica cifrado neste dispositivo.</p>
+
+  <section class="cartao" style="margin-top:20px">
+    <span class="rotulo">Meus números (por mês)</span>
+    <form id="m-form" style="margin-top:10px">
+      <div class="campos">
+        <div><label for="renda">Renda líquida <small>O que entra na conta</small></label><input type="number" id="renda" min="0" step="50" inputmode="decimal" required /></div>
+        <div><label for="despesas">Despesas <small>Custo de vida médio</small></label><input type="number" id="despesas" min="0" step="50" inputmode="decimal" required /></div>
+        <div><label for="aporte">Aporte mensal <small>Quanto você investe</small></label><input type="number" id="aporte" min="0" step="50" inputmode="decimal" /></div>
+        <div><label for="reserva">Reserva de emergência <small>Saldo atual</small></label><input type="number" id="reserva" min="0" step="100" inputmode="decimal" /></div>
+        <div><label for="investido">Outros investimentos <small>Saldo atual, fora a reserva</small></label><input type="number" id="investido" min="0" step="100" inputmode="decimal" /></div>
+      </div>
+      <div class="acoes" style="margin-top:14px"><button class="botao">Salvar e calcular</button><span class="ok" id="m-ok" hidden>Salvo.</span></div>
+    </form>
+  </section>
+
+  <div class="grade g2" style="margin-top:14px">
+    <section class="cartao">
+      <span class="rotulo">Metas de patrimônio</span>
+      <ul class="lista" id="m-marcos" style="margin-top:6px"><li class="mudo">Preencha renda e despesas para calcular.</li></ul>
+      <small>Prazos estimados com rendimento real de 5% ao ano e aporte constante. São projeções, não garantias.</small>
+    </section>
+    <section class="cartao">
+      <span class="rotulo">Metas de estudo</span>
+      <ul class="lista" id="m-estudo" style="margin-top:6px"></ul>
+    </section>
+  </div>
+
+  <section class="cartao" style="margin-top:14px">
+    <span class="rotulo">Evolução do patrimônio</span>
+    <p class="mudo" style="margin-top:6px">Registre o total (reserva + investimentos) uma vez por mês, depois do aporte.</p>
+    <form id="p-form" class="campos" style="align-items:end">
+      <div><label for="p-mes">Mês</label><input type="month" id="p-mes" required /></div>
+      <div><label for="p-valor">Patrimônio total (R$)</label><input type="number" id="p-valor" min="0" step="100" inputmode="decimal" required /></div>
+      <div><button class="botao sec">Registrar</button></div>
+    </form>
+    <div id="p-grafico" style="margin-top:18px"></div>
+    <div id="p-lista" class="rolagem"></div>
+  </section>
+</Base>
+
+<script>
+  import { aoAbrir, atualizar, sequencia, notaMedia, semanaAtual } from '../lib/estado';
+  import { marcos, patrimonioAtual, JURO_REAL_PROJECAO } from '../lib/metas';
+  import { LICOES, NOTA_MINIMA } from '../data/licoes';
+  import { linhas } from '../lib/graficos';
+  import { brl, brlCurto, esc } from '../lib/formato';
+
+  const $ = (id: string) => document.getElementById(id)!;
+  const campos = ['renda', 'despesas', 'aporte', 'reserva', 'investido'] as const;
+
+  aoAbrir((e) => {
+    campos.forEach((c) => (($(c) as HTMLInputElement).value = e.perfil[c] ? String(e.perfil[c]) : ''));
+    const agora = new Date();
+    ($('p-mes') as HTMLInputElement).value = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+
+    const item = (feito: boolean, nome: string, detalhe: string, prog: number, prazo: string) =>
+      `<li><span class="num-semana ${feito ? 'feita' : ''}">${feito ? '✓' : Math.round(prog * 100) + '%'}</span><span class="cresce"><b>${esc(nome)}</b><small style="display:block">${esc(detalhe)}</small>${
+        feito ? '' : `<div class="progresso" style="margin:6px 0 2px"><span style="width:${prog * 100}%"></span></div><small>${esc(prazo)}</small>`
+      }</span></li>`;
+
+    function pintar() {
+      const ms = marcos(e);
+      if (ms) $('m-marcos').innerHTML = ms.map((m) => item(m.feito, m.nome, m.detalhe, m.progresso, m.prazo)).join('');
+
+      const feitas = LICOES.filter((l) => e.licoes[l.slug]?.concluidaEm).length;
+      const esperado = Math.min(LICOES.length, semanaAtual(e));
+      const nota = notaMedia(e);
+      const seq = sequencia(e);
+      const missoes = LICOES.filter((l) => e.licoes[l.slug]?.missao).length;
+      $('m-estudo').innerHTML = [
+        item(feitas >= esperado, 'Uma lição por semana', `${feitas} concluídas; o ritmo semanal pede ${esperado} até hoje.`, feitas / esperado, feitas < esperado ? `${esperado - feitas} em atraso` : ''),
+        item((nota ?? 0) >= NOTA_MINIMA && feitas > 0, `Nota média de ${NOTA_MINIMA}% ou mais`, nota === null ? 'Ainda sem notas.' : `Média atual: ${nota}%.`, (nota ?? 0) / NOTA_MINIMA > 1 ? 1 : (nota ?? 0) / NOTA_MINIMA, ''),
+        item(seq >= 7, 'Sequência de 7 dias', `Sequência atual: ${seq} dia(s).`, Math.min(1, seq / 7), 'faça a pílula diária'),
+        item(missoes >= feitas && feitas > 0, 'Missões práticas em dia', `${missoes} missões cumpridas de ${feitas} lições concluídas.`, feitas ? missoes / feitas : 0, 'marque a missão na página da lição'),
+        item(feitas === LICOES.length, 'Trilha completa em 24 semanas', `${feitas} de ${LICOES.length} lições.`, feitas / LICOES.length, ''),
+      ].join('');
+
+      // Evolução
+      const reg = [...e.patrimonio].sort((a, b) => a.mes.localeCompare(b.mes));
+      if (reg.length >= 2) {
+        const tm = Math.pow(1 + JURO_REAL_PROJECAO / 100, 1 / 12) - 1;
+        let plano = reg[0].valor;
+        const planejado = reg.map((_, i) => (i === 0 ? plano : (plano = plano * (1 + tm) + e.perfil.aporte)));
+        linhas($('p-grafico'), {
+          rotulosX: reg.map((r) => r.mes.slice(5) + '/' + r.mes.slice(2, 4)),
+          nomeX: 'Mês',
+          fmt: (n) => brl(n),
+          fmtEixo: brlCurto,
+          series: [
+            { nome: 'Patrimônio registrado', cor: 'var(--s1)', pontos: reg.map((r) => r.valor) },
+            { nome: 'Plano (aporte + 5% real ao ano)', cor: 'var(--s2)', pontos: planejado, tracejada: true },
+          ],
+        });
+      } else {
+        $('p-grafico').innerHTML = `<p class="aviso">${reg.length ? 'Registre mais um mês para ver o gráfico de evolução.' : 'Nenhum registro ainda. Total atual pelos seus números: ' + brl(patrimonioAtual(e)) + '.'}</p>`;
+      }
+      $('p-lista').innerHTML = reg.length
+        ? `<table style="margin-top:12px"><thead><tr><th>Mês</th><th class="n">Patrimônio</th><th class="n">Variação</th><th></th></tr></thead><tbody>${reg
+            .map((r, i) => `<tr><th>${r.mes.slice(5)}/${r.mes.slice(0, 4)}</th><td class="n">${brl(r.valor)}</td><td class="n">${i ? brl(r.valor - reg[i - 1].valor) : '—'}</td><td class="n"><button class="trancar" data-rem="${r.mes}" type="button">Remover</button></td></tr>`)
+            .join('')}</tbody></table>`
+        : '';
+    }
+    pintar();
+
+    $('m-form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      await atualizar((s) => campos.forEach((c) => (s.perfil[c] = Number(($(c) as HTMLInputElement).value) || 0)));
+      pintar();
+      $('m-ok').hidden = false;
+      setTimeout(() => ($('m-ok').hidden = true), 2000);
+    });
+
+    $('p-form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const mes = ($('p-mes') as HTMLInputElement).value;
+      const valor = Number(($('p-valor') as HTMLInputElement).value);
+      await atualizar((s) => {
+        s.patrimonio = s.patrimonio.filter((r) => r.mes !== mes);
+        s.patrimonio.push({ mes, valor });
+        s.patrimonio.sort((a, b) => a.mes.localeCompare(b.mes));
+      });
+      ($('p-valor') as HTMLInputElement).value = '';
+      pintar();
+    });
+
+    $('p-lista').addEventListener('click', async (ev) => {
+      const mes = (ev.target as HTMLElement).dataset.rem;
+      if (!mes || !confirm('Remover o registro deste mês?')) return;
+      await atualizar((s) => (s.patrimonio = s.patrimonio.filter((r) => r.mes !== mes)));
+      pintar();
+    });
+  });
+</script>

@@ -1,0 +1,163 @@
+---
+import Base from '../layouts/Base.astro';
+import { PERGUNTAS } from '../lib/perfil';
+---
+<Base titulo="Perfil" atual="perfil">
+  <span class="rotulo">Perfil de investidor</span>
+  <h1>Qual é o seu perfil de risco</h1>
+  <p class="sub">O perfil combina três coisas: o que você diz aguentar, o que a sua situação financeira permite e o que você já sabe. Ele se atualiza sozinho conforme você avança na trilha, preenche as metas e cadastra a carteira.</p>
+  <p class="aviso" style="margin-top:12px;max-width:760px">Modelo didático, no mesmo espírito do questionário que bancos e corretoras aplicam. As alocações são referências gerais por perfil, não uma recomendação individual. Para decisões com valores relevantes, consulte um profissional certificado.</p>
+
+  <div class="grade g2" style="margin-top:20px;align-items:start">
+    <section class="cartao">
+      <span class="rotulo">Questionário · 6 perguntas</span>
+      <form id="q" style="margin-top:12px">
+        {PERGUNTAS.map((q, i) => (
+          <fieldset class="pergunta">
+            <legend>{i + 1}. {q.p}</legend>
+            {q.ops.map((o, k) => (
+              <label class="opcao"><input type="radio" name={q.id} value={k} required /> <span>{o}</span></label>
+            ))}
+          </fieldset>
+        ))}
+        <div class="acoes"><button class="botao">Calcular meu perfil</button><small id="q-data"></small></div>
+      </form>
+    </section>
+
+    <div class="pilha">
+      <section class="cartao pastel p1" id="res">
+        <span class="pilula">Seu perfil</span>
+        <h2 style="margin:10px 0 4px">Responda o questionário</h2>
+        <p class="mudo">O resultado aparece aqui e passa a ser recalculado com os seus dados.</p>
+      </section>
+      <section class="cartao" id="eixos" hidden></section>
+      <section class="cartao" id="revelado" hidden></section>
+    </div>
+  </div>
+
+  <div id="bloco-alocacao" hidden>
+    <section class="cartao" style="margin-top:14px">
+      <div class="acoes" style="justify-content:space-between">
+        <div><span class="rotulo">Categorias compatíveis com o seu perfil</span><h2 style="margin:4px 0 0" id="al-titulo"></h2></div>
+        <button class="botao sec" id="al-aplicar" type="button">Usar esta alocação na Carteira</button>
+      </div>
+      <p class="mudo" id="al-nota" style="margin-top:8px"></p>
+      <div id="al-barras" style="margin-top:6px"></div>
+      <div class="rolagem" style="margin-top:14px"><table id="al-tabela"></table></div>
+    </section>
+
+    <section class="cartao" style="margin-top:14px">
+      <span class="rotulo">Onde alocar um valor</span>
+      <p class="mudo" style="margin-top:6px">Informe quanto você tem para investir agora. O cálculo completa primeiro a reserva de emergência e depois preenche as categorias que estão abaixo do alvo do seu perfil, levando em conta o que você já cadastrou na Carteira.</p>
+      <div class="campos" style="max-width:420px"><div><label for="v-valor">Valor a investir (R$)</label><input type="number" id="v-valor" min="0" step="50" inputmode="decimal" placeholder="Ex.: 5000" /></div></div>
+      <div id="v-res" style="margin-top:14px"></div>
+    </section>
+  </div>
+</Base>
+
+<script>
+  import { aoAbrir, atualizar } from '../lib/estado';
+  import { PERGUNTAS, NIVEIS, calcularPerfil } from '../lib/perfil';
+  import { CLASSES, CLASSES_LONGO, MODELOS, distribuir, nomeClasse } from '../lib/carteira';
+  import { RISCOS } from '../data/mercado';
+  import { empilhadas } from '../lib/graficos';
+  import { brl, dataBR, esc } from '../lib/formato';
+
+  const B = document.documentElement.dataset.base || '';
+  const $ = (id: string) => document.getElementById(id)!;
+  const cores: Record<string, string> = { pos: 'var(--s1)', infl: 'var(--s2)', credito: 'var(--s3)', fii: 'var(--s4)', acoes: 'var(--s5)', exterior: 'var(--s6)', alt: 'var(--s7)' };
+  const selo = (r: keyof typeof RISCOS) => `<span class="selo ${r}"><span aria-hidden="true">${RISCOS[r].icone}</span> ${RISCOS[r].nome}</span>`;
+
+  aoAbrir((e) => {
+    const form = $('q') as HTMLFormElement;
+    PERGUNTAS.forEach((q) => {
+      const r = e.perfilRisco.respostas[q.id];
+      if (typeof r === 'number') (form.querySelector(`input[name="${q.id}"][value="${r}"]`) as HTMLInputElement).checked = true;
+    });
+
+    function pintar() {
+      const p = calcularPerfil(e);
+      if (e.perfilRisco.em) $('q-data').textContent = `Respondido em ${dataBR(e.perfilRisco.em)}. Refaça quando sua vida mudar.`;
+
+      // Como a carteira se comporta (aparece mesmo sem questionário)
+      if (p.revelado) {
+        $('revelado').hidden = false;
+        $('revelado').innerHTML = `<span class="rotulo">O que a sua carteira mostra hoje</span>
+          <p style="margin:8px 0 6px">Cerca de <b>${p.revelado.pctRisco.toFixed(0)}%</b> da carteira de longo prazo está em ativos que oscilam forte. Ela se comporta como a de um perfil <b>${NIVEIS[p.revelado.nivel].nome.toLowerCase()}</b>.</p>
+          <div class="progresso"><span style="width:${p.revelado.pctRisco}%"></span></div>
+          <small>Até 15%: conservador · 15% a 45%: moderado · acima de 45%: arrojado</small>
+          ${p.divergencia ? `<p class="aviso alerta" style="margin-top:12px">${esc(p.divergencia)}</p>` : p.completo ? '<p class="aviso" style="margin-top:12px">Carteira e perfil estão alinhados.</p>' : ''}`;
+      } else {
+        $('revelado').hidden = false;
+        $('revelado').innerHTML = `<span class="rotulo">O que a sua carteira mostra hoje</span><p class="mudo" style="margin:8px 0 10px">Cadastre seus investimentos para comparar o perfil com o que você realmente tem.</p><a class="botao sec" href="${B}/carteira/">Cadastrar investimentos</a>`;
+      }
+      if (!p.completo) return;
+
+      const n = NIVEIS[p.nivel];
+      $('res').className = `cartao pastel p${p.nivel + 1}`;
+      $('res').innerHTML = `<span class="pilula">Seu perfil hoje</span>
+        <h2 style="margin:10px 0 4px;font-size:1.7rem">${n.nome}</h2>
+        <p>${n.desc}</p>
+        ${p.limitantes.length ? `<p class="mudo" style="margin:0">O que segura o perfil neste nível: <b>${p.limitantes.map((l) => l.nome.toLowerCase()).join(', ')}</b>. O perfil final é sempre o menor dos três eixos.</p>` : '<p class="mudo" style="margin:0">Os três eixos sustentam esse perfil.</p>'}`;
+
+      $('eixos').hidden = false;
+      $('eixos').innerHTML = `<span class="rotulo">Como o perfil foi calculado</span>${p.eixos
+        .map(
+          (x) => `<div class="tarefa" style="margin-top:14px"><div class="acoes"><b>${x.nome}</b><span class="selo neutro">${NIVEIS[x.nivel].nome}</span></div><div class="progresso"><span style="width:${(x.pontos / x.max) * 100}%"></span></div><ul style="margin:8px 0 0;padding-left:1.1em;font-size:0.86rem;color:var(--tinta2)">${x.fatores.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>`,
+        )
+        .join('')}${p.comoSubir.length ? `<div class="aviso" style="margin-top:14px"><b>O que mudaria o resultado</b><ul style="margin:6px 0 0;padding-left:1.1em">${p.comoSubir.map((c) => `<li>${esc(c)}</li>`).join('')}</ul></div>` : ''}`;
+
+      // Alocação por categoria
+      $('bloco-alocacao').hidden = false;
+      const modelo = MODELOS[n.id];
+      const total = e.carteira.itens.reduce((s, i) => s + i.valor, 0);
+      const reservaNec = e.perfil.despesas * e.carteira.mesesReserva;
+      const longo = total - Math.min(reservaNec, total);
+      $('al-titulo').textContent = `Alocação de referência: perfil ${n.nome.toLowerCase()}`;
+      $('al-nota').textContent = `Primeiro, a reserva de emergência de ${e.carteira.mesesReserva} meses${reservaNec ? ` (${brl(reservaNec)})` : ''} em liquidez diária. Os percentuais abaixo valem para o que sobra depois dela${total ? `: hoje, ${brl(longo)}` : ''}.`;
+      const usadas = CLASSES_LONGO.filter((c) => modelo.alvo[c.id] > 0);
+      empilhadas($('al-barras'), {
+        partes: usadas.map((c) => ({ nome: c.nome, cor: cores[c.id] })),
+        linhas: [{ rotulo: n.nome, valores: usadas.map((c) => modelo.alvo[c.id]) }],
+      });
+      const atual = (id: string) => e.carteira.itens.filter((i) => i.classe === id).reduce((s, i) => s + i.valor, 0);
+      $('al-tabela').innerHTML = `<thead><tr><th>Categoria</th><th>Risco</th><th>Exemplos do que entra</th><th class="n">Alvo</th>${total ? '<th class="n">Você tem</th><th class="n">Deveria ter</th>' : ''}</tr></thead><tbody>
+        <tr><th>${esc(CLASSES[0].nome)}</th><td>${selo('seguro')}</td><td><small>${esc(CLASSES[0].ex)}</small></td><td class="n">${e.carteira.mesesReserva} meses</td>${total ? `<td class="n">${brl(atual('caixa'))}</td><td class="n">${brl(Math.min(reservaNec, total))}</td>` : ''}</tr>
+        ${CLASSES_LONGO.map((c) => `<tr><th>${esc(c.nome)}</th><td>${selo(c.risco)}</td><td><small>${esc(c.ex)}</small></td><td class="n">${modelo.alvo[c.id]}%</td>${total ? `<td class="n">${brl(atual(c.id))}</td><td class="n">${brl((longo * modelo.alvo[c.id]) / 100)}</td>` : ''}</tr>`).join('')}</tbody>`;
+      ($('al-aplicar') as HTMLButtonElement).textContent = e.carteira.modelo === n.id ? 'Alocação já em uso na Carteira' : 'Usar esta alocação na Carteira';
+      ($('al-aplicar') as HTMLButtonElement).disabled = e.carteira.modelo === n.id;
+      valor();
+    }
+
+    function valor() {
+      const p = calcularPerfil(e);
+      const v = Number(($('v-valor') as HTMLInputElement).value) || 0;
+      if (!p.completo || v <= 0) return ($('v-res').innerHTML = '');
+      const partes = distribuir(e, v, MODELOS[NIVEIS[p.nivel].id].alvo);
+      const risco = (id: string) => CLASSES.find((c) => c.id === id)!.risco;
+      $('v-res').innerHTML = `<ul class="lista">${partes
+        .map((x) => `<li><span class="cresce"><b>${esc(nomeClasse(x.classe))}</b><small style="display:block">${esc(CLASSES.find((c) => c.id === x.classe)!.ex)}</small></span>${selo(risco(x.classe))}<b style="min-width:6.5em;text-align:right">${brl(x.valor)}</b></li>`)
+        .join('')}</ul><small>${!e.perfil.despesas ? 'Sem despesas informadas em Metas, a reserva de emergência não entra na conta. ' : ''}${e.carteira.itens.length ? '' : 'Sem carteira cadastrada, o valor é dividido direto pelos percentuais do perfil. '}A escolha do produto dentro de cada categoria é sua; as lições de cada módulo mostram como avaliar.</small>`;
+    }
+    $('v-valor').addEventListener('input', valor);
+
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const dados = new FormData(form);
+      await atualizar((s) => {
+        PERGUNTAS.forEach((q) => (s.perfilRisco.respostas[q.id] = Number(dados.get(q.id))));
+        s.perfilRisco.em = new Date().toISOString();
+      });
+      pintar();
+      $('res').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+
+    $('al-aplicar').addEventListener('click', async () => {
+      const p = calcularPerfil(e);
+      await atualizar((s) => (s.carteira.modelo = NIVEIS[p.nivel].id));
+      pintar();
+    });
+
+    pintar();
+  });
+</script>

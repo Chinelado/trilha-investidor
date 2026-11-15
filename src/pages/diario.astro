@@ -1,0 +1,130 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base titulo="Diário" atual="diario">
+  <span class="rotulo" id="d-data">Pílula do dia</span>
+  <h1>Revisão diária</h1>
+  <p class="sub">Um termo do glossário e duas perguntas sobre lições que você já concluiu. Leva de 3 a 5 minutos e mantém a sequência.</p>
+
+  <section class="cartao" style="margin-top:20px;max-width:760px">
+    <span class="rotulo">Termo do dia</span>
+    <h2 style="margin:4px 0 8px" id="d-termo"></h2>
+    <p class="mudo">Tente explicar com suas palavras antes de ver a definição.</p>
+    <button class="botao sec" id="d-ver" type="button">Ver definição</button>
+    <p id="d-def" hidden style="margin-top:12px"></p>
+  </section>
+
+  <section class="cartao" style="margin-top:14px;max-width:760px">
+    <span class="rotulo">Perguntas de revisão</span>
+    <form id="d-form" style="margin-top:10px"></form>
+    <div id="d-res" role="status"></div>
+  </section>
+
+  <section class="cartao" style="margin-top:14px;max-width:760px">
+    <span class="rotulo">Últimos 14 dias</span>
+    <div id="d-dias" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"></div>
+    <p class="mudo" id="d-seq" style="margin-top:10px"></p>
+  </section>
+</Base>
+
+<style>
+  :global(.dia) { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; font-size: 0.78rem; background: var(--linha); color: var(--tinta2); }
+  :global(.dia.feito) { background: var(--marca); color: var(--marca-tinta); font-weight: 700; }
+</style>
+
+<script>
+  import { aoAbrir, atualizar, hoje, sequencia } from '../lib/estado';
+  import { LICOES } from '../data/licoes';
+  import { GLOSSARIO } from '../data/glossario';
+  import { dataBR, esc } from '../lib/formato';
+
+  const $ = (id: string) => document.getElementById(id)!;
+
+  // Gerador pseudoaleatório com semente: a pílula é a mesma durante o dia inteiro.
+  function semente(s: string) {
+    let h = 2166136261;
+    for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+    return () => {
+      h = Math.imul(h ^ (h >>> 15), 2246822507);
+      h = Math.imul(h ^ (h >>> 13), 3266489909);
+      return ((h ^= h >>> 16) >>> 0) / 4294967296;
+    };
+  }
+
+  aoAbrir((e) => {
+    const dia = hoje();
+    const rnd = semente(dia);
+    $('d-data').textContent = 'Pílula de ' + dataBR(dia);
+
+    const termo = GLOSSARIO[Math.floor(rnd() * GLOSSARIO.length)];
+    $('d-termo').textContent = termo.t;
+    $('d-def').textContent = termo.d;
+    $('d-ver').addEventListener('click', () => {
+      $('d-def').hidden = false;
+      $('d-ver').hidden = true;
+    });
+
+    const feitas = LICOES.filter((l) => e.licoes[l.slug]?.concluidaEm);
+    const base = feitas.length ? feitas : [LICOES[0]];
+    const banco = base.flatMap((l) => l.quiz.map((q) => ({ ...q, origem: l.titulo })));
+    const escolhidas: typeof banco = [];
+    while (escolhidas.length < Math.min(2, banco.length)) {
+      const q = banco[Math.floor(rnd() * banco.length)];
+      if (!escolhidas.includes(q)) escolhidas.push(q);
+    }
+    const ordem = escolhidas.map((q) => q.ops.map((_, i) => i).sort(() => rnd() - 0.5));
+
+    const form = $('d-form') as HTMLFormElement;
+    form.innerHTML =
+      escolhidas
+        .map(
+          (q, i) => `<fieldset class="pergunta"><legend>${i + 1}. ${esc(q.p)}<small style="display:block;font-weight:400">${esc(q.origem)}</small></legend>${ordem[i]
+            .map((o) => `<label class="opcao"><input type="radio" name="q${i}" value="${o}" required /> <span>${esc(q.ops[o])}</span></label>`)
+            .join('')}<p class="explica" hidden></p></fieldset>`,
+        )
+        .join('') + '<button class="botao">Corrigir</button>';
+    if (!feitas.length) form.insertAdjacentHTML('afterbegin', '<p class="aviso" style="margin-bottom:14px">Você ainda não concluiu lições, então as perguntas vêm da semana 1.</p>');
+
+    const pintarDias = () => {
+      const out: string[] = [];
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const k = hoje(d);
+        out.push(`<span class="dia ${e.diario[k] ? 'feito' : ''}" title="${dataBR(k)}${e.diario[k] ? ': feito' : ''}">${d.getDate()}</span>`);
+      }
+      $('d-dias').innerHTML = out.join('');
+      const s = sequencia(e);
+      $('d-seq').textContent = s ? `Sequência atual: ${s} dia(s) seguidos de estudo. Meta: 7 dias.` : 'Faça a pílula de hoje para iniciar uma sequência. Meta: 7 dias seguidos.';
+    };
+    pintarDias();
+    if (e.diario[dia]) $('d-res').innerHTML = `<p class="aviso">Pílula de hoje já registrada: ${e.diario[dia].acertos} de ${e.diario[dia].total}. Refazer não altera o registro.</p>`;
+
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      let acertos = 0;
+      escolhidas.forEach((q, i) => {
+        const fs = form.querySelectorAll('fieldset')[i];
+        const marcada = Number(new FormData(form).get('q' + i));
+        fs.querySelectorAll<HTMLLabelElement>('.opcao').forEach((lab) => {
+          const v = Number(lab.querySelector('input')!.value);
+          lab.classList.remove('certa', 'errada');
+          if (v === q.c) lab.classList.add('certa');
+          else if (v === marcada) lab.classList.add('errada');
+        });
+        const ex = fs.querySelector<HTMLElement>('.explica')!;
+        ex.hidden = false;
+        ex.textContent = (marcada === q.c ? 'Certo. ' : 'Resposta correta destacada. ') + q.e;
+        if (marcada === q.c) acertos++;
+      });
+      if (!e.diario[dia]) {
+        await atualizar((s) => {
+          s.diario[dia] = { acertos, total: escolhidas.length };
+          s.sessoes.push({ data: new Date().toISOString(), tipo: 'diario', ref: dia, titulo: 'Pílula diária', nota: Math.round((acertos / escolhidas.length) * 100), minutos: 4 });
+        });
+      }
+      $('d-res').innerHTML = `<p class="aviso"><b>${acertos} de ${escolhidas.length}.</b> Registrado. Volte amanhã para uma nova pílula.</p>`;
+      pintarDias();
+    });
+  });
+</script>

@@ -1,0 +1,57 @@
+---
+import Base from '../layouts/Base.astro';
+import { LICOES, MODULOS } from '../data/licoes';
+import { RISCOS } from '../data/mercado';
+const b = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+<Base titulo="Trilha" atual="trilha">
+  <span class="rotulo">24 semanas · 6 módulos</span>
+  <h1>Trilha de aprendizado</h1>
+  <p class="sub">Uma lição por semana, com exercícios e uma missão prática. A nota mínima para concluir é 70%. O selo ao lado indica o nível de risco do tipo de investimento tratado.</p>
+
+  {MODULOS.map((m) => (
+    <section class="cartao" style="margin-top:16px">
+      <span class="rotulo">Módulo {m.n}</span>
+      <h2 style="margin:2px 0 2px">{m.nome}</h2>
+      <p class="mudo">{m.desc}</p>
+      <ul class="lista">
+        {LICOES.filter((l) => l.modulo === m.n).map((l) => (
+          <li data-slug={l.slug} data-semana={l.semana}>
+            <span class="num-semana">{l.semana}</span>
+            <span class="cresce">
+              <a class="titulo" href={`${b}/licao/${l.slug}/`}>{l.titulo}</a>
+              <small style="display:block" class="estado">{l.minutos} min</small>
+            </span>
+            {l.risco && <span class={`selo ${l.risco}`}><span aria-hidden="true">{RISCOS[l.risco].icone}</span> {RISCOS[l.risco].nome}</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  ))}
+</Base>
+
+<script>
+  import { aoAbrir, liberada, dataLiberacao, semanaAtual } from '../lib/estado';
+  import { dataBR } from '../lib/formato';
+
+  aoAbrir((e) => {
+    const atual = semanaAtual(e);
+    document.querySelectorAll<HTMLElement>('li[data-slug]').forEach((li) => {
+      const semana = Number(li.dataset.semana);
+      const reg = e.licoes[li.dataset.slug!];
+      const num = li.querySelector('.num-semana')!;
+      const est = li.querySelector('.estado')!;
+      if (reg?.concluidaEm) {
+        num.classList.add('feita');
+        num.textContent = '✓';
+        est.textContent = `Concluída em ${dataBR(reg.concluidaEm)} · nota ${reg.nota}%${reg.missao ? ' · missão feita' : ' · missão pendente'}`;
+      } else if (!liberada(e, semana)) {
+        li.classList.add('bloqueada');
+        est.textContent = `Libera em ${dataBR(dataLiberacao(e, semana))}`;
+      } else {
+        if (semana <= atual) num.classList.add('atual');
+        est.textContent += ' · disponível';
+      }
+    });
+  });
+</script>

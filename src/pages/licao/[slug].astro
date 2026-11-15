@@ -1,0 +1,173 @@
+---
+import Base from '../../layouts/Base.astro';
+import { LICOES, MODULOS, NOTA_MINIMA } from '../../data/licoes';
+import { RISCOS } from '../../data/mercado';
+import { VISUAIS } from '../../lib/visuais';
+
+export function getStaticPaths() {
+  return LICOES.map((l) => ({ params: { slug: l.slug }, props: { l } }));
+}
+const { l } = Astro.props;
+const b = import.meta.env.BASE_URL.replace(/\/$/, '');
+const modulo = MODULOS.find((m) => m.n === l.modulo)!;
+const proxima = LICOES.find((x) => x.semana === l.semana + 1);
+const visual = l.visual ? VISUAIS[l.visual] : null;
+---
+<Base titulo={l.titulo} atual="trilha">
+  <p><a href={`${b}/trilha/`}>← Trilha</a></p>
+  <span class="rotulo">Semana {l.semana} · Módulo {modulo.n}: {modulo.nome} · {l.minutos} min</span>
+  <h1>{l.titulo}</h1>
+  <p class="sub">{l.resumo}</p>
+  {l.risco && (
+    <p><span class={`selo ${l.risco}`}><span aria-hidden="true">{RISCOS[l.risco].icone}</span> {RISCOS[l.risco].nome}</span> <small>{RISCOS[l.risco].desc}</small></p>
+  )}
+
+  <div id="bloqueio" class="aviso alerta" hidden></div>
+
+  <div id="conteudo" data-slug={l.slug} data-semana={l.semana} data-titulo={l.titulo} data-visual={l.visual || ''} data-minima={NOTA_MINIMA}>
+    <article class="prosa">
+      <div class="cartao" style="margin:20px 0">
+        <span class="rotulo">Ao final você vai</span>
+        <ul style="margin:6px 0 0">{l.objetivos.map((o) => <li>{o}</li>)}</ul>
+      </div>
+
+      {l.secoes.map((s, i) => (
+        <>
+          <h2>{s.h}</h2>
+          <Fragment set:html={s.html} />
+          {visual && i === 0 && (
+            <figure class="figura cartao">
+              <h3>{visual.titulo}</h3>
+              <p id="visual-legenda"></p>
+              <div id="visual"></div>
+            </figure>
+          )}
+        </>
+      ))}
+    </article>
+
+    <section class="cartao" style="margin-top:28px;max-width:760px">
+      <span class="rotulo">Exercícios</span>
+      <h2 style="margin-top:2px">Teste o que você aprendeu</h2>
+      <form id="quiz"></form>
+      <div id="resultado" role="status"></div>
+    </section>
+
+    <section class="cartao" style="margin-top:14px;max-width:760px">
+      <span class="rotulo">Missão prática da semana</span>
+      <p style="margin-top:6px">{l.missao}</p>
+      <label class="opcao" style="max-width:320px"><input type="checkbox" id="missao" /> Missão cumprida</label>
+    </section>
+
+    <section class="cartao" style="margin-top:14px;max-width:760px">
+      <label for="anotacao">Minhas anotações <small>Ficam cifradas neste dispositivo e aparecem no Resumo.</small></label>
+      <textarea id="anotacao" placeholder="O que você quer lembrar desta lição?"></textarea>
+      <div class="acoes" style="margin-top:10px"><button class="botao sec" id="salvar-nota" type="button">Salvar anotação</button><span class="ok" id="nota-ok" hidden>Salvo.</span></div>
+    </section>
+
+    <div class="acoes" style="margin-top:20px">
+      {proxima && <a class="botao sec" href={`${b}/licao/${proxima.slug}/`}>Próxima: semana {proxima.semana} →</a>}
+      <a class="botao sec" href={`${b}/resumo/`}>Ver meu resumo</a>
+    </div>
+  </div>
+
+  <script type="application/json" id="quiz-dados" set:html={JSON.stringify(l.quiz)} />
+</Base>
+
+<script>
+  import { aoAbrir, atualizar, liberada, dataLiberacao, mercadoAtual } from '../../lib/estado';
+  import { VISUAIS } from '../../lib/visuais';
+  import { MERCADO } from '../../data/mercado';
+  import { dataBR, esc } from '../../lib/formato';
+
+  const raiz = document.getElementById('conteudo')!;
+  const { slug, titulo, visual } = raiz.dataset as Record<string, string>;
+  const semana = Number(raiz.dataset.semana);
+  const minima = Number(raiz.dataset.minima);
+  const perguntas: { p: string; ops: string[]; c: number; e: string }[] = JSON.parse(document.getElementById('quiz-dados')!.textContent!);
+  const inicio = Date.now();
+  const $ = (id: string) => document.getElementById(id)!;
+
+  // Embaralha a ordem das opções para a resposta certa não cair sempre na mesma posição.
+  const ordem = perguntas.map((q) => q.ops.map((_, i) => i).sort(() => Math.random() - 0.5));
+
+  aoAbrir((e) => {
+    if (!liberada(e, semana)) {
+      const b = $('bloqueio');
+      b.hidden = false;
+      b.innerHTML = `Esta lição libera em <b>${dataBR(dataLiberacao(e, semana))}</b>. O ritmo semanal dá tempo de praticar. Para avançar por conta própria, ative "Ritmo livre" em Ajustes.`;
+      raiz.hidden = true;
+      return;
+    }
+
+    if (visual && VISUAIS[visual]) {
+      const m = mercadoAtual(e);
+      VISUAIS[visual].montar($('visual'), m, MERCADO.poupanca);
+      $('visual-legenda').textContent = `${VISUAIS[visual].legenda(m)} Indicadores de ${dataBR(m.em.slice(0, 10))}.`;
+    }
+
+    const reg = e.licoes[slug];
+    ($('missao') as HTMLInputElement).checked = !!reg?.missao;
+    ($('anotacao') as HTMLTextAreaElement).value = reg?.anotacao || '';
+
+    const form = $('quiz') as HTMLFormElement;
+    form.innerHTML =
+      perguntas
+        .map(
+          (q, i) => `<fieldset class="pergunta"><legend>${i + 1}. ${esc(q.p)}</legend>${ordem[i]
+            .map((o) => `<label class="opcao"><input type="radio" name="q${i}" value="${o}" required /> <span>${esc(q.ops[o])}</span></label>`)
+            .join('')}<p class="explica" hidden></p></fieldset>`,
+        )
+        .join('') + '<button class="botao">Corrigir</button>';
+
+    if (reg?.concluidaEm) $('resultado').innerHTML = `<p class="aviso">Lição concluída em ${dataBR(reg.concluidaEm)} com nota ${reg.nota}%. Você pode refazer os exercícios quando quiser.</p>`;
+
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      let acertos = 0;
+      perguntas.forEach((q, i) => {
+        const fs = form.querySelectorAll('fieldset')[i];
+        const marcada = Number(new FormData(form).get('q' + i));
+        fs.querySelectorAll<HTMLLabelElement>('.opcao').forEach((lab) => {
+          const v = Number(lab.querySelector('input')!.value);
+          lab.classList.remove('certa', 'errada');
+          if (v === q.c) lab.classList.add('certa');
+          else if (v === marcada) lab.classList.add('errada');
+        });
+        const ex = fs.querySelector<HTMLElement>('.explica')!;
+        ex.hidden = false;
+        ex.textContent = (marcada === q.c ? 'Certo. ' : 'Resposta correta destacada. ') + q.e;
+        if (marcada === q.c) acertos++;
+      });
+      const nota = Math.round((acertos / perguntas.length) * 100);
+      const passou = nota >= minima;
+      const minutos = Math.max(1, Math.round((Date.now() - inicio) / 60000));
+      await atualizar((s) => {
+        const r = (s.licoes[slug] ||= { tentativas: 0 });
+        r.tentativas++;
+        if (passou) {
+          r.nota = Math.max(r.nota || 0, nota);
+          r.concluidaEm ||= new Date().toISOString();
+        }
+        s.sessoes.push({ data: new Date().toISOString(), tipo: 'licao', ref: slug, titulo: `Semana ${semana}: ${titulo}`, nota, minutos });
+      });
+      $('resultado').innerHTML = passou
+        ? `<p class="aviso"><b>Nota ${nota}%.</b> Lição concluída e registrada no seu resumo. Agora faça a missão prática abaixo.</p>`
+        : `<p class="aviso alerta"><b>Nota ${nota}%.</b> O mínimo é ${minima}%. Releia as explicações e tente de novo.</p>`;
+      $('resultado').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+
+    $('missao').addEventListener('change', (ev) =>
+      atualizar((s) => {
+        (s.licoes[slug] ||= { tentativas: 0 }).missao = (ev.target as HTMLInputElement).checked;
+      }),
+    );
+    $('salvar-nota').addEventListener('click', async () => {
+      await atualizar((s) => {
+        (s.licoes[slug] ||= { tentativas: 0 }).anotacao = ($('anotacao') as HTMLTextAreaElement).value.trim();
+      });
+      $('nota-ok').hidden = false;
+      setTimeout(() => ($('nota-ok').hidden = true), 2000);
+    });
+  });
+</script>

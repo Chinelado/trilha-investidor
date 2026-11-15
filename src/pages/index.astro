@@ -1,0 +1,193 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base titulo="Início" atual="">
+  <span class="rotulo" id="p-semana">Sua trilha</span>
+  <h1 id="p-ola">Painel</h1>
+  <p class="sub" id="p-sub"></p>
+
+  <div class="painel" style="margin-top:22px">
+    <div class="pilha">
+      <section class="cartao pastel p1 pilha" id="p-licao"></section>
+      <section class="cartao pastel p2 pilha" id="p-diario"></section>
+      <section class="cartao pastel p3 pilha" id="p-carteira"></section>
+    </div>
+
+    <div class="pilha">
+      <section class="cartao" id="p-passos-cartao">
+        <div class="acoes" style="justify-content:space-between">
+          <h2 style="margin:0">Primeiros passos</h2>
+          <span class="acoes" style="gap:8px"><span class="anel" id="p-anel"></span><b id="p-pct"></b></span>
+        </div>
+        <ul class="passos" id="p-passos" style="margin-top:14px"></ul>
+      </section>
+
+      <div class="grade g2">
+        <section class="cartao">
+          <div class="acoes" style="justify-content:space-between;margin-bottom:14px"><h2 style="margin:0">Tarefas da semana</h2><small id="p-tarefas-n"></small></div>
+          <div id="p-tarefas"></div>
+        </section>
+        <section class="cartao pilha">
+          <h2 style="margin:0">Próxima meta</h2>
+          <div id="p-meta" class="pilha"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="grade g4" style="margin-top:14px" id="p-numeros"></div>
+
+  <div class="grade g2" style="margin-top:14px">
+    <section class="cartao pilha">
+      <h2 style="margin:0">Progresso na trilha</h2>
+      <div id="p-modulos" class="pilha"></div>
+    </section>
+    <section class="cartao">
+      <div class="acoes" style="justify-content:space-between">
+        <h2 style="margin:0">Mercado agora</h2>
+        <small id="p-mercado-data"></small>
+      </div>
+      <div class="grade" id="p-mercado" style="margin-top:14px;grid-template-columns:1fr 1fr"></div>
+    </section>
+  </div>
+</Base>
+
+<style>
+  .painel { display: grid; gap: 14px; grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.6fr); align-items: start; }
+  @media (max-width: 1000px) { .painel { grid-template-columns: 1fr; } }
+</style>
+
+<script>
+  import { aoAbrir, semanaAtual, sequencia, notaMedia, mercadoAtual, liberada, dataLiberacao, hoje } from '../lib/estado';
+  import { LICOES, MODULOS } from '../data/licoes';
+  import { brl, pct, dataBR, esc } from '../lib/formato';
+  import { marcos } from '../lib/metas';
+  import { analisar } from '../lib/carteira';
+
+  const B = document.documentElement.dataset.base || '';
+  const $ = (id: string) => document.getElementById(id)!;
+
+  aoAbrir((e) => {
+    const feitas = LICOES.filter((l) => e.licoes[l.slug]?.concluidaEm);
+    const semana = semanaAtual(e);
+    const proxima = LICOES.find((l) => !e.licoes[l.slug]?.concluidaEm);
+    const fim = feitas.length === LICOES.length;
+
+    $('p-semana').textContent = fim ? 'Trilha concluída' : `Semana ${Math.min(semana, LICOES.length)} de ${LICOES.length}`;
+    $('p-ola').textContent = feitas.length === 0 ? 'Bem-vindo à sua trilha' : fim ? 'Você concluiu a trilha' : 'Continue de onde parou';
+    $('p-sub').textContent = feitas.length === 0 ? 'Uma lição por semana, uma pílula por dia. Comece pelos primeiros passos.' : `${feitas.length} de ${LICOES.length} lições concluídas.`;
+
+    // Lição da vez
+    if (proxima) {
+      const ok = liberada(e, proxima.semana);
+      $('p-licao').innerHTML = `<span class="pilula">Semana ${proxima.semana} · ${proxima.minutos} min</span>
+        <h2 style="margin:0">${esc(proxima.titulo)}</h2>
+        <p class="mudo">${esc(proxima.resumo)}</p>
+        ${ok ? `<a class="botao" href="${B}/licao/${proxima.slug}/">Estudar agora</a>` : `<span class="pilula">Libera em ${dataBR(dataLiberacao(e, proxima.semana))}</span><a class="botao sec" href="${B}/trilha/">Ver a trilha</a>`}`;
+    } else {
+      $('p-licao').innerHTML = `<span class="pilula">Trilha completa</span><h2 style="margin:0">Agora é manter a rotina</h2><p class="mudo">Aporte mensal, revisão semestral e pílula diária.</p><a class="botao sec" href="${B}/resumo/">Ver meu resumo</a>`;
+    }
+
+    // Pílula
+    const d = e.diario[hoje()];
+    const seq = sequencia(e);
+    $('p-diario').innerHTML = `<span class="pilula">Pílula do dia · sequência de ${seq} dia(s)</span>
+      <h2 style="margin:0">${d ? 'Feita hoje' : 'Revisão de 3 a 5 minutos'}</h2>
+      <p class="mudo">${d ? `Você acertou ${d.acertos} de ${d.total}. Volte amanhã.` : 'Um termo do glossário e duas perguntas sobre o que você já estudou.'}</p>
+      <a class="botao ${d ? 'sec' : ''}" href="${B}/diario/">${d ? 'Rever' : 'Fazer agora'}</a>`;
+
+    // Carteira
+    const temCarteira = e.carteira.itens.length > 0;
+    if (temCarteira) {
+      const a = analisar(e);
+      const fora = a.classes.filter((c) => !c.noAlvo).length;
+      $('p-carteira').innerHTML = `<span class="pilula">Carteira · ${e.carteira.itens.length} investimento(s)</span>
+        <h2 style="margin:0">${brl(a.total)}</h2>
+        <p class="mudo">${fora ? `${fora} tipo(s) de investimento fora do alvo.` : 'Todos os tipos dentro do alvo.'}</p>
+        <a class="botao sec" href="${B}/carteira/">Ver análise</a>`;
+    } else {
+      $('p-carteira').innerHTML = `<span class="pilula">Carteira</span><h2 style="margin:0">Analise o que você já tem</h2><p class="mudo">Cadastre seus investimentos e veja quanto deveria estar em cada um.</p><a class="botao" href="${B}/carteira/">Cadastrar</a>`;
+    }
+
+    // Primeiros passos
+    const passos: [boolean, string, string, string, string][] = [
+      [true, 'Criar a senha do cofre', 'Seus dados já estão cifrados neste dispositivo.', 'config', 'Ajustes'],
+      [e.perfil.renda > 0 && e.perfil.despesas > 0, 'Informar renda, despesas e aporte', 'As metas de patrimônio são calculadas com esses números.', 'metas', 'Preencher'],
+      [!!e.perfilRisco.em, 'Descobrir seu perfil de investidor', 'Seis perguntas, combinadas com seus dados e seu progresso.', 'perfil', 'Responder'],
+      [temCarteira, 'Cadastrar seus investimentos', 'Para analisar a carteira e o que remanejar.', 'carteira', 'Cadastrar'],
+      [feitas.length > 0, 'Concluir a primeira lição', 'Raio-x financeiro: 30 minutos, com exercícios.', 'licao/' + LICOES[0].slug, 'Estudar'],
+      [Object.keys(e.diario).length > 0, 'Fazer a primeira pílula diária', 'Revisão rápida que mantém a sequência.', 'diario', 'Fazer'],
+      [!!e.backupEm, 'Exportar um backup cifrado', 'Protege contra perda do aparelho e leva os dados ao celular.', 'config', 'Exportar'],
+    ];
+    const nFeitos = passos.filter((p) => p[0]).length;
+    const perc = Math.round((nFeitos / passos.length) * 100);
+    $('p-anel').style.setProperty('--p', String(perc));
+    $('p-pct').textContent = `${perc}% completo`;
+    $('p-passos').innerHTML = passos
+      .map(([ok, t, s, href, acao]) => `<li class="${ok ? 'feito' : ''}"><span class="marca" aria-hidden="true">✓</span><span class="cresce"><b>${t}</b><small>${s}</small></span>${ok ? '' : `<a class="botao sec" style="min-height:36px;padding:6px 14px" href="${B}/${href}/">${acao}</a>`}</li>`)
+      .join('');
+
+    // Tarefas da semana
+    const daSemana = LICOES.find((l) => l.semana === Math.min(semana, LICOES.length))!;
+    const reg = e.licoes[daSemana.slug];
+    let dias7 = 0;
+    for (let i = 0; i < 7; i++) {
+      const dt = new Date();
+      dt.setDate(dt.getDate() - i);
+      if (e.diario[hoje(dt)]) dias7++;
+    }
+    const tarefas: [string, number][] = [
+      [`Lição da semana ${daSemana.semana}`, reg?.concluidaEm ? 100 : reg?.tentativas ? 50 : 0],
+      ['Missão prática', reg?.missao ? 100 : 0],
+      ['Pílulas nos últimos 7 dias', Math.round((dias7 / 7) * 100)],
+    ];
+    $('p-tarefas-n').textContent = `${tarefas.filter((t) => t[1] < 100).length} pendente(s)`;
+    $('p-tarefas').innerHTML = tarefas
+      .map(([t, v]) => `<div class="tarefa"><div class="acoes"><span>${esc(t)}</span><b>${v}%</b></div><div class="progresso"><span style="width:${v}%"></span></div></div>`)
+      .join('');
+
+    // Próxima meta
+    const ms = marcos(e);
+    if (!ms) {
+      $('p-meta').innerHTML = `<p class="mudo">Informe renda, despesas e aporte para calcular suas metas em reais.</p><a class="botao sec" href="${B}/metas/">Preencher meus números</a>`;
+    } else {
+      const prox = ms.find((m) => !m.feito);
+      $('p-meta').innerHTML = prox
+        ? `<b>${esc(prox.nome)}</b><small style="display:block">${esc(prox.detalhe)}</small><div class="progresso"><span style="width:${Math.min(100, prox.progresso * 100)}%"></span></div><small>${Math.round(prox.progresso * 100)}% · ${esc(prox.prazo)}</small><a class="botao sec" href="${B}/metas/">Ver todas as metas</a>`
+        : `<p>Todas as metas atingidas.</p>`;
+    }
+
+    // Números
+    const nota = notaMedia(e);
+    const ult = e.patrimonio.length ? e.patrimonio[e.patrimonio.length - 1].valor : e.perfil.investido + e.perfil.reserva;
+    $('p-numeros').innerHTML = [
+      ['Lições concluídas', `${feitas.length}<small> / ${LICOES.length}</small>`],
+      ['Nota média', nota === null ? '—' : `${nota}<small>%</small>`],
+      ['Sequência', `${seq}<small> dia(s)</small>`],
+      ['Patrimônio', ult ? brl(ult) : '—'],
+    ]
+      .map(([r, v]) => `<div class="cartao"><span class="rotulo">${r}</span><span class="cifra">${v}</span></div>`)
+      .join('');
+
+    // Módulos
+    $('p-modulos').innerHTML = MODULOS.map((m) => {
+      const ls = LICOES.filter((l) => l.modulo === m.n);
+      const f = ls.filter((l) => e.licoes[l.slug]?.concluidaEm).length;
+      return `<div><div class="acoes" style="justify-content:space-between"><span>${m.n}. ${esc(m.nome)}</span><small>${f}/${ls.length}</small></div><div class="progresso"><span style="width:${(f / ls.length) * 100}%"></span></div></div>`;
+    }).join('');
+
+    // Mercado
+    const m = mercadoAtual(e);
+    const real = ((1 + m.selic / 100) / (1 + m.ipca / 100) - 1) * 100;
+    $('p-mercado').innerHTML = [
+      ['Selic', pct(m.selic)],
+      ['IPCA 12 meses', pct(m.ipca)],
+      ['Juro real', pct(real, 1)],
+      ['Dólar', brl(m.dolar, 2)],
+    ]
+      .map(([r, v]) => `<div><span class="rotulo">${r}</span><span class="cifra" style="font-size:1.3rem">${v}</span></div>`)
+      .join('');
+    const dias = Math.floor((Date.now() - new Date(m.em).getTime()) / 86_400_000);
+    $('p-mercado-data').innerHTML = `${dataBR(m.em.slice(0, 10))}${dias > 45 ? ' · <a href="' + B + '/mercado/">atualize</a>' : ''}`;
+  });
+</script>

@@ -1,0 +1,51 @@
+---
+import Base from '../layouts/Base.astro';
+import { GLOSSARIO } from '../data/glossario';
+const termos = [...GLOSSARIO].sort((a, b) => a.t.localeCompare(b.t, 'pt-BR'));
+const letras = [...new Set(termos.map((t) => t.t[0].toUpperCase()))];
+---
+<Base titulo="Glossário" atual="glossario">
+  <span class="rotulo">{termos.length} termos</span>
+  <h1>Glossário</h1>
+  <p class="sub">O vocabulário do mercado financeiro em linguagem direta.</p>
+
+  <div style="margin:18px 0;max-width:480px">
+    <label for="busca">Buscar termo</label>
+    <input type="search" id="busca" placeholder="Ex.: CDI, FII, liquidez" autocomplete="off" />
+  </div>
+  <p class="mudo" id="vazio" hidden>Nenhum termo encontrado.</p>
+
+  {letras.map((letra) => (
+    <section class="cartao grupo" style="margin-top:12px">
+      <h2 style="margin:0 0 6px">{letra}</h2>
+      <dl style="margin:0">
+        {termos.filter((t) => t.t[0].toUpperCase() === letra).map((t) => (
+          <div class="termo" style="padding:10px 0;border-top:1px solid var(--linha)">
+            <dt style="font-weight:600">{t.t}</dt>
+            <dd style="margin:2px 0 0;color:var(--tinta2)">{t.d}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  ))}
+</Base>
+
+<script>
+  const limpa = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const busca = document.getElementById('busca') as HTMLInputElement;
+  busca.addEventListener('input', () => {
+    const q = limpa(busca.value.trim());
+    let total = 0;
+    document.querySelectorAll<HTMLElement>('.grupo').forEach((g) => {
+      let n = 0;
+      g.querySelectorAll<HTMLElement>('.termo').forEach((t) => {
+        const ok = !q || limpa(t.textContent || '').includes(q);
+        t.hidden = !ok;
+        if (ok) n++;
+      });
+      g.hidden = n === 0;
+      total += n;
+    });
+    document.getElementById('vazio')!.hidden = total > 0;
+  });
+</script>

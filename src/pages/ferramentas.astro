@@ -1,0 +1,142 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base titulo="Ferramentas" atual="ferramentas">
+  <span class="rotulo">Simuladores</span>
+  <h1>Ferramentas</h1>
+  <p class="sub">Calculadoras para praticar o que as lições ensinam. Usam os indicadores atuais como ponto de partida. Os resultados são estimativas.</p>
+
+  <section class="cartao" style="margin-top:20px">
+    <h2 style="margin-top:0">Juros compostos</h2>
+    <div class="campos">
+      <div><label for="j-ini">Valor inicial (R$)</label><input type="number" id="j-ini" value="1000" min="0" step="100" inputmode="decimal" /></div>
+      <div><label for="j-ap">Aporte mensal (R$)</label><input type="number" id="j-ap" value="500" min="0" step="50" inputmode="decimal" /></div>
+      <div><label for="j-tx">Rendimento ao ano (%)</label><input type="number" id="j-tx" min="0" max="50" step="0.1" inputmode="decimal" /></div>
+      <div><label for="j-inf">Inflação ao ano (%)</label><input type="number" id="j-inf" min="0" max="30" step="0.1" inputmode="decimal" /></div>
+      <div><label for="j-anos">Prazo (anos)</label><input type="number" id="j-anos" value="20" min="1" max="50" step="1" inputmode="numeric" /></div>
+    </div>
+    <div class="grade g3" style="margin:16px 0" id="j-res"></div>
+    <div id="j-graf"></div>
+    <small>O rendimento líquido sugerido considera a Selic atual com IR de 15%. "Em valores de hoje" desconta a inflação informada.</small>
+  </section>
+
+  <section class="cartao" style="margin-top:14px">
+    <h2 style="margin-top:0">Comparador de renda fixa</h2>
+    <p class="mudo">Quanto cada opção entrega, líquido de imposto, no mesmo prazo.</p>
+    <div class="campos">
+      <div><label for="c-val">Valor aplicado (R$)</label><input type="number" id="c-val" value="10000" min="0" step="500" inputmode="decimal" /></div>
+      <div><label for="c-dias">Prazo (dias)</label><input type="number" id="c-dias" value="720" min="30" step="30" inputmode="numeric" /></div>
+      <div><label for="c-cdb">CDB (% do CDI)</label><input type="number" id="c-cdb" value="105" min="0" step="1" inputmode="decimal" /></div>
+      <div><label for="c-lci">LCI/LCA (% do CDI)</label><input type="number" id="c-lci" value="90" min="0" step="1" inputmode="decimal" /></div>
+    </div>
+    <p id="c-nota" class="mudo" style="margin:14px 0 10px"></p>
+    <div id="c-graf"></div>
+  </section>
+
+  <div class="grade g2" style="margin-top:14px">
+    <section class="cartao">
+      <h2 style="margin-top:0">Equivalência LCI/LCA × CDB</h2>
+      <div class="campos">
+        <div><label for="e-lci">Taxa da LCI/LCA (% do CDI)</label><input type="number" id="e-lci" value="90" min="0" step="1" inputmode="decimal" /></div>
+        <div><label for="e-dias">Prazo (dias)</label><input type="number" id="e-dias" value="720" min="30" step="30" inputmode="numeric" /></div>
+      </div>
+      <p id="e-res" class="aviso" style="margin-top:14px"></p>
+    </section>
+    <section class="cartao">
+      <h2 style="margin-top:0">Reserva de emergência</h2>
+      <div class="campos">
+        <div><label for="r-desp">Despesas mensais (R$)</label><input type="number" id="r-desp" min="0" step="100" inputmode="decimal" /></div>
+        <div><label for="r-tipo">Sua renda é</label><select id="r-tipo"><option value="6">Estável (CLT, servidor)</option><option value="12">Variável (autônomo, PJ)</option></select></div>
+      </div>
+      <p id="r-res" class="aviso" style="margin-top:14px"></p>
+    </section>
+  </div>
+</Base>
+
+<script>
+  import { aoAbrir, mercadoAtual } from '../lib/estado';
+  import { MERCADO } from '../data/mercado';
+  import { linhas, barras } from '../lib/graficos';
+  import { brl, brlCurto, pct, projetar, aliquotaIR, rendimentoNoPrazo, duracao, mesesAte } from '../lib/formato';
+
+  const $ = (id: string) => document.getElementById(id) as HTMLInputElement;
+  const v = (id: string) => Number($(id).value) || 0;
+
+  aoAbrir((e) => {
+    const m = mercadoAtual(e);
+    $('j-tx').value = (m.selic * 0.85).toFixed(1);
+    $('j-inf').value = m.ipca.toFixed(1);
+    if (e.perfil.aporte) $('j-ap').value = String(e.perfil.aporte);
+    if (e.perfil.despesas) $('r-desp').value = String(e.perfil.despesas);
+
+    function juros() {
+      const anos = Math.max(1, Math.min(50, Math.round(v('j-anos'))));
+      const nominal = projetar(v('j-ini'), v('j-ap'), v('j-tx'), anos);
+      const aportado = nominal.map((_, i) => v('j-ini') + v('j-ap') * 12 * i);
+      const real = nominal.map((x, i) => x / Math.pow(1 + v('j-inf') / 100, i));
+      const fim = nominal[anos];
+      $('j-res').innerHTML = [
+        ['Total acumulado', brl(fim)],
+        ['Você aportou', brl(aportado[anos])],
+        ['Juros recebidos', brl(fim - aportado[anos])],
+        ['Em valores de hoje', brl(real[anos])],
+      ]
+        .map(([r, x]) => `<div><span class="rotulo">${r}</span><span class="cifra" style="font-size:1.35rem">${x}</span></div>`)
+        .join('');
+      linhas(document.getElementById('j-graf')!, {
+        rotulosX: nominal.map((_, i) => (i ? `${i} a` : 'Hoje')),
+        nomeX: 'Ano',
+        fmt: (n) => brl(n),
+        fmtEixo: brlCurto,
+        series: [
+          { nome: 'Total acumulado', cor: 'var(--s1)', pontos: nominal },
+          { nome: 'Total aportado', cor: 'var(--s2)', pontos: aportado },
+          { nome: 'Em valores de hoje', cor: 'var(--s3)', pontos: real, tracejada: true },
+        ],
+      });
+    }
+
+    function comparar() {
+      const dias = Math.max(30, v('c-dias'));
+      const val = v('c-val');
+      const ir = aliquotaIR(dias);
+      const liq = (taxa: number, isento = false) => val * (rendimentoNoPrazo(taxa, dias) / 100) * (isento ? 1 : 1 - ir / 100);
+      document.getElementById('c-nota')!.textContent = `Prazo de ${dias} dias: alíquota de IR de ${pct(ir, 1)}. CDI considerado: ${pct(m.cdi)} ao ano, constante no período. Valores abaixo são o ganho líquido.`;
+      barras(document.getElementById('c-graf')!, {
+        fmt: (n) => brl(n),
+        itens: [
+          { rotulo: `CDB ${v('c-cdb')}% do CDI`, nota: 'IR pela tabela regressiva', valor: liq((m.cdi * v('c-cdb')) / 100) },
+          { rotulo: `LCI/LCA ${v('c-lci')}% do CDI`, nota: 'isenta de IR', valor: liq((m.cdi * v('c-lci')) / 100, true) },
+          { rotulo: 'Tesouro Selic', nota: 'IR + custódia de 0,20% a.a.', valor: liq(m.selic - 0.2) },
+          { rotulo: 'Poupança', nota: 'isenta, aproximado', valor: liq(MERCADO.poupanca, true) },
+        ].sort((a, b) => b.valor - a.valor),
+      });
+    }
+
+    function equivalencia() {
+      const ir = aliquotaIR(v('e-dias'));
+      const eq = v('e-lci') / (1 - ir / 100);
+      document.getElementById('e-res')!.innerHTML = `Com IR de ${pct(ir, 1)}, essa LCI/LCA equivale a um CDB de <b>${pct(eq, 1)} do CDI</b>. Um CDB do mesmo prazo só compensa se pagar mais do que isso.`;
+    }
+
+    function reserva() {
+      const meses = Number(($('r-tipo') as unknown as HTMLSelectElement).value);
+      const alvo = v('r-desp') * meses;
+      const min = v('r-desp') * (meses / 2);
+      if (!alvo) return (document.getElementById('r-res')!.textContent = 'Informe suas despesas mensais.');
+      const falta = Math.max(0, alvo - e.perfil.reserva);
+      document.getElementById('r-res')!.innerHTML = `Reserva recomendada: de <b>${brl(min)}</b> a <b>${brl(alvo)}</b>.${
+        e.perfil.aporte && falta ? ` Com seu aporte de ${brl(e.perfil.aporte)}, você completa em ${duracao(mesesAte(alvo, e.perfil.reserva, e.perfil.aporte, m.selic * 0.8))}.` : falta ? '' : ' Você já atingiu esse valor.'
+      }`;
+    }
+
+    const ligar = (ids: string[], f: () => void) => {
+      ids.forEach((id) => $(id).addEventListener('input', f));
+      f();
+    };
+    ligar(['j-ini', 'j-ap', 'j-tx', 'j-inf', 'j-anos'], juros);
+    ligar(['c-val', 'c-dias', 'c-cdb', 'c-lci'], comparar);
+    ligar(['e-lci', 'e-dias'], equivalencia);
+    ligar(['r-desp', 'r-tipo'], reserva);
+  });
+</script>

@@ -1,0 +1,101 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base titulo="Resumo" atual="resumo">
+  <span class="rotulo">Resumo de sessões</span>
+  <h1>O que você aprendeu até aqui</h1>
+  <p class="sub" id="r-sub"></p>
+
+  <div class="grade g4" style="margin-top:20px" id="r-numeros"></div>
+
+  <section class="cartao" style="margin-top:14px">
+    <span class="rotulo">Aprendizados por módulo</span>
+    <div id="r-aprendi" style="margin-top:6px"></div>
+  </section>
+
+  <section class="cartao" style="margin-top:14px">
+    <span class="rotulo">Pontos a revisar</span>
+    <div id="r-revisar" style="margin-top:6px"></div>
+  </section>
+
+  <section class="cartao" style="margin-top:14px">
+    <span class="rotulo">Minhas anotações</span>
+    <div id="r-notas" style="margin-top:6px"></div>
+  </section>
+
+  <section class="cartao" style="margin-top:14px">
+    <span class="rotulo">Histórico de sessões</span>
+    <div class="rolagem" id="r-sessoes" style="margin-top:6px"></div>
+  </section>
+
+  <div class="acoes nao-imprime" style="margin-top:16px"><button class="botao sec" type="button" id="r-imprimir">Imprimir ou salvar em PDF</button></div>
+</Base>
+
+<script>
+  import { aoAbrir, sequencia, notaMedia } from '../lib/estado';
+  import { LICOES, MODULOS, NOTA_MINIMA } from '../data/licoes';
+  import { dataBR, esc } from '../lib/formato';
+
+  const B = document.documentElement.dataset.base || '';
+  const $ = (id: string) => document.getElementById(id)!;
+
+  $('r-imprimir').addEventListener('click', () => print());
+
+  aoAbrir((e) => {
+    const feitas = LICOES.filter((l) => e.licoes[l.slug]?.concluidaEm);
+    const minutos = e.sessoes.reduce((a, s) => a + s.minutos, 0);
+    const nota = notaMedia(e);
+    $('r-sub').textContent = feitas.length
+      ? `Você concluiu ${feitas.length} de ${LICOES.length} lições desde ${dataBR(e.inicioTrilha)}.`
+      : 'Nada concluído ainda. Depois da primeira lição, seus aprendizados aparecem aqui.';
+
+    $('r-numeros').innerHTML = [
+      ['Lições concluídas', `${feitas.length}<small> / ${LICOES.length}</small>`],
+      ['Sessões de estudo', String(e.sessoes.length)],
+      ['Tempo de estudo', minutos >= 60 ? `${Math.floor(minutos / 60)}<small> h </small>${minutos % 60}<small> min</small>` : `${minutos}<small> min</small>`],
+      ['Nota média', nota === null ? '—' : `${nota}<small>%</small>`],
+      ['Sequência atual', `${sequencia(e)}<small> dia(s)</small>`],
+      ['Pílulas diárias', String(Object.keys(e.diario).length)],
+    ]
+      .map(([r, v]) => `<div class="cartao"><span class="rotulo">${r}</span><span class="cifra">${v}</span></div>`)
+      .join('');
+
+    $('r-aprendi').innerHTML = feitas.length
+      ? MODULOS.map((m) => {
+          const ls = feitas.filter((l) => l.modulo === m.n);
+          if (!ls.length) return '';
+          return `<h3 style="margin-top:16px">Módulo ${m.n}: ${esc(m.nome)}</h3>${ls
+            .map(
+              (l) =>
+                `<details class="item" open><summary>Semana ${l.semana}: ${esc(l.titulo)} <small>· nota ${e.licoes[l.slug].nota}% · ${dataBR(e.licoes[l.slug].concluidaEm!)}</small></summary><div><ul style="margin:0;padding-left:1.2em">${l.aprendizados
+                  .map((a) => `<li>${esc(a)}</li>`)
+                  .join('')}</ul></div></details>`,
+            )
+            .join('')}`;
+        }).join('')
+      : '<p class="mudo">Conclua uma lição para ver os pontos-chave aqui.</p>';
+
+    const fracas = feitas.filter((l) => (e.licoes[l.slug].nota ?? 100) < 100);
+    const semMissao = feitas.filter((l) => !e.licoes[l.slug].missao);
+    const tent = LICOES.filter((l) => e.licoes[l.slug]?.tentativas && !e.licoes[l.slug].concluidaEm);
+    const linhas = [
+      ...tent.map((l) => `<li><span class="cresce"><a class="titulo" href="${B}/licao/${l.slug}/">${esc(l.titulo)}</a><small style="display:block">Tentou, mas não atingiu ${NOTA_MINIMA}%.</small></span></li>`),
+      ...fracas.map((l) => `<li><span class="cresce"><a class="titulo" href="${B}/licao/${l.slug}/">${esc(l.titulo)}</a><small style="display:block">Nota ${e.licoes[l.slug].nota}%: vale rever as questões erradas.</small></span></li>`),
+      ...semMissao.map((l) => `<li><span class="cresce"><a class="titulo" href="${B}/licao/${l.slug}/">${esc(l.titulo)}</a><small style="display:block">Missão prática pendente: ${esc(l.missao)}</small></span></li>`),
+    ];
+    $('r-revisar').innerHTML = linhas.length ? `<ul class="lista">${linhas.join('')}</ul>` : '<p class="mudo">Nada pendente.</p>';
+
+    const notas = LICOES.filter((l) => e.licoes[l.slug]?.anotacao);
+    $('r-notas').innerHTML = notas.length
+      ? notas.map((l) => `<details class="item" open><summary>Semana ${l.semana}: ${esc(l.titulo)}</summary><div style="white-space:pre-wrap">${esc(e.licoes[l.slug].anotacao!)}</div></details>`).join('')
+      : '<p class="mudo">Suas anotações das lições aparecem aqui.</p>';
+
+    const ss = [...e.sessoes].reverse();
+    $('r-sessoes').innerHTML = ss.length
+      ? `<table><thead><tr><th>Data</th><th>Sessão</th><th class="n">Nota</th><th class="n">Tempo</th></tr></thead><tbody>${ss
+          .slice(0, 100)
+          .map((s) => `<tr><td>${dataBR(s.data)}</td><td>${esc(s.titulo)}</td><td class="n">${s.nota ?? '—'}${s.nota !== undefined ? '%' : ''}</td><td class="n">${s.minutos} min</td></tr>`)
+          .join('')}</tbody></table>`
+      : '<p class="mudo">Nenhuma sessão registrada.</p>';
+  });
+</script>
